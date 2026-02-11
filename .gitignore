@@ -1,0 +1,17 @@
+# Binaries
+main
+warehouse-app
+*.exe
+
+# Databases (Edge)
+*.db
+*.dat
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# OS specific
+.DS_Store
+
