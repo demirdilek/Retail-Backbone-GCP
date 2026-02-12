@@ -50,37 +50,45 @@ func main() {
 	}
 
 	fmt.Printf("✅ Success: Recorded movement of %d %s\n", quantity, itemName)
+	SyncPendingEvents(db)
 }
-
-// SyncPendingEvents finds unsynced records and marks them as synced
 func SyncPendingEvents(db *sql.DB) {
-	fmt.Println("🔄 Sync-Manager: Checking for unsynced events...")
+    fmt.Println("🔄 Sync-Manager: Checking for unsynced events...")
 
-	// 1. Fetch all unsynced movements
-	rows, err := db.Query("SELECT id, item_name, quantity FROM stock_movements WHERE synced_to_gcp = 0")
-	if err != nil {
-		log.Printf("Sync error: %v", err)
-		return
-	}
-	defer rows.Close()
+    // 1. Collect IDs of unsynced records
+    rows, err := db.Query("SELECT id, item_name, quantity FROM stock_movements WHERE synced_to_gcp = 0")
+    if err != nil {
+        log.Printf("Query error: %v", err)
+        return
+    }
 
-	for rows.Next() {
-		var id int
-		var item string
-		var qty int
-		rows.Scan(&id, &item, &qty)
+    type movement struct {
+        id   int
+        item string
+        qty  int
+    }
+    var toSync []movement
 
-		// 2. Simulate Cloud Upload
-		fmt.Printf("☁️  Uploading: [ID: %d] %d x %s to GCP Pub/Sub...\n", id, qty, item)
+    for rows.Next() {
+        var m movement
+        if err := rows.Scan(&m.id, &m.item, &m.qty); err != nil {
+            continue
+        }
+        toSync = append(toSync, m)
+    }
+    rows.Close() // Explicitly close the reader before starting writers!
 
-		// 3. Mark as synced in local DB
-		updateSQL := `UPDATE stock_movements SET synced_to_gcp = 1 WHERE id = ?`
-		_, err := db.Exec(updateSQL, id)
-		if err != nil {
-			log.Printf("Failed to update sync status for ID %d: %v", id, err)
-		} else {
-			fmt.Printf("✅ Event %d marked as synced.\n", id)
-		}
-	}
+    // 2. Iterate over the collected records and sync them
+    for _, m := range toSync {
+        fmt.Printf("☁️  Uploading: [ID: %d] %d x %s to GCP Pub/Sub...\n", m.id, m.qty, m.item)
+        
+        // Simulating network success...
+        _, err := db.Exec("UPDATE stock_movements SET synced_to_gcp = 1 WHERE id = ?", m.id)
+        if err != nil {
+            log.Printf("Failed to update ID %d: %v", m.id, err)
+        } else {
+            fmt.Printf("✅ Event %d marked as synced.\n", m.id)
+        }
+    }
 }
-
+	
