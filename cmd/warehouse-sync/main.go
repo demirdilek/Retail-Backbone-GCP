@@ -6,6 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"os"
+	"time"
 )
 
 func main() {
@@ -88,7 +89,27 @@ func SyncPendingEvents(db *sql.DB) {
             log.Printf("Failed to update ID %d: %v", m.id, err)
         } else {
             fmt.Printf("✅ Event %d marked as synced.\n", m.id)
+						logSyncActivity(fmt.Sprintf("SUCCESS: Synced Item %s (Qty: %d)", m.item, m.qty))
         }
     }
 }
 	
+// logSyncActivity writes the result of a sync operation to a local file
+func logSyncActivity(message string) {
+	// os.OpenFile with O_APPEND creates the file if it doesn't exist
+	// and adds new lines at the end instead of overwriting
+	f, err := os.OpenFile("backbone.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Could not write to log file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
+	logLine := fmt.Sprintf("[%s] %s\n", currentTime, message)
+
+	if _, err := f.WriteString(logLine); err != nil {
+		log.Printf("Error writing string to log: %v", err)
+	}
+}
+
