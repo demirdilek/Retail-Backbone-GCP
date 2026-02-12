@@ -28,6 +28,7 @@ func main() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		item_name TEXT,
 		quantity INTEGER,
+		synced_to_gcp BOOLEAN DEFAULT 0, -- New column for sync status
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -49,5 +50,37 @@ func main() {
 	}
 
 	fmt.Printf("✅ Success: Recorded movement of %d %s\n", quantity, itemName)
+}
+
+// SyncPendingEvents finds unsynced records and marks them as synced
+func SyncPendingEvents(db *sql.DB) {
+	fmt.Println("🔄 Sync-Manager: Checking for unsynced events...")
+
+	// 1. Fetch all unsynced movements
+	rows, err := db.Query("SELECT id, item_name, quantity FROM stock_movements WHERE synced_to_gcp = 0")
+	if err != nil {
+		log.Printf("Sync error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var item string
+		var qty int
+		rows.Scan(&id, &item, &qty)
+
+		// 2. Simulate Cloud Upload
+		fmt.Printf("☁️  Uploading: [ID: %d] %d x %s to GCP Pub/Sub...\n", id, qty, item)
+
+		// 3. Mark as synced in local DB
+		updateSQL := `UPDATE stock_movements SET synced_to_gcp = 1 WHERE id = ?`
+		_, err := db.Exec(updateSQL, id)
+		if err != nil {
+			log.Printf("Failed to update sync status for ID %d: %v", id, err)
+		} else {
+			fmt.Printf("✅ Event %d marked as synced.\n", id)
+		}
+	}
 }
 
