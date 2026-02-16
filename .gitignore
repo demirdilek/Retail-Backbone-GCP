@@ -15,3 +15,7 @@ warehouse-app
 # OS specific
 .DS_Store
 
+retail-agent
+server-bin
+*.db
+*.log
