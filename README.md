@@ -21,6 +21,9 @@ Instead of a monolithic approach, this "Backbone" uses a decentralized
 event-driven design. It is built to handle 3,000+ locations by treating 
 each store as an autonomous edge-node.
 
+## Project Structure
+
+```text
 retail-backbone-gcp/
 ├── cmd/
 │   └── server/
@@ -35,3 +38,4 @@ retail-backbone-gcp/
 ├── Dockerfile                # Multi-stage build for a slim, secure container
 ├── docker-compose.yml        # Orchestrates the Go App + PostgreSQL Database
 └── go.mod                    # Go module definition & dependencies (lib/pq)
+```
