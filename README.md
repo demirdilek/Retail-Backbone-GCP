@@ -21,3 +21,17 @@ Instead of a monolithic approach, this "Backbone" uses a decentralized
 event-driven design. It is built to handle 3,000+ locations by treating 
 each store as an autonomous edge-node.
 
+retail-backbone-gcp/
+├── cmd/
+│   └── server/
+│       └── main.go           # Entry point: Initializes DB, routes, and starts the server
+├── internal/
+│   └── database/
+│       ├── db.go             # Postgres connection & Idempotent JSON Seeding logic
+│       └── handlers.go       # Logic for /ingest, /checkout, and /status (Dashboard)
+├── web/
+│   └── index.html            # The Web-Scanner UI for iPhone & S25
+├── inventory.json            # Master Data (extracted via Google Lens/Gemini)
+├── Dockerfile                # Multi-stage build for a slim, secure container
+├── docker-compose.yml        # Orchestrates the Go App + PostgreSQL Database
+└── go.mod                    # Go module definition & dependencies (lib/pq)
