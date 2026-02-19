@@ -1,0 +1,16 @@
+cccddnrbkddhvfdbkucdjdbthecnjlkfjlbltivcif
+
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: retail_user
+      POSTGRES_PASSWORD: retail_password
+      POSTGRES_DB: retail_backbone
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/vat/lib/postgressql/data
+
+volumes:
+  postgres_data:    

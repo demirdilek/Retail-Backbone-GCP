@@ -1,21 +1,30 @@
-# Binaries
-main
-warehouse-app
+# Binaries und Build-Artefakte
+bin/
+dist/
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin
+/retail-backbone  # Falls dein Binary so heißt wie das Repo
 
-# Databases (Edge)
-*.db
-*.dat
+# Go-spezifisch
+vendor/
+*.test
+*.out
+coverage.txt
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.backup
+# Google Cloud & Credentials (WICHTIG)
+.gcloudignore
+.env
+*.key
+*.pem
+*.json
+!app.yaml        # app.yaml wird meist benötigt, enthält aber keine Secrets!
+!service-account-placeholder.json
 
-# OS specific
+# IDEs & OS
+.vscode/
+.idea/
 .DS_Store
-
-retail-agent
-server-bin
-*.db
-*.log
