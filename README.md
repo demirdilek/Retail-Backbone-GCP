@@ -1,66 +1,55 @@
 Retail-Backbone-GCP 🚀
-A resilient, edge-first architecture designed to synchronize thousands of logistics centers and retail stores with Google Cloud Platform.
+A resilient, microservice-based architecture designed to synchronize retail operations with Google Cloud Platform.
 
 🏗 The Architecture
-This project demonstrates a high-availability Hybrid Cloud approach:
+This project demonstrates a high-availability Edge-Computing approach:
 
-Edge Layer: High-performance Go microservices.
+Microservices: Decoupled Go services for Web Hosting (UI delivery) and Barcode/Product Scanning.
 
-Observability: Structured JSON logging (SRE Standard) for real-time latency tracking across devices (iPhone/Android).
+Observability: Structured JSON logging for real-time latency tracking (SRE Standard).
 
-Secure Networking: Zero-trust connectivity via Tailscale, providing encrypted TLS tunnels without public port forwarding.
+Secure Networking: Zero-trust connectivity via Tailscale TLS for encrypted edge-to-cloud communication.
 
-Resilience: Local persistence for 100% offline capability during network outages.
+Persistence: PostgreSQL at the edge for robust, relational data handling.
 
 🛠 Tech Stack
-Language: Go (Golang) - utilizing log/slog for structured observability.
+Language: Go (Golang) – optimized for low-latency microservices.
 
-Security: Tailscale TLS for automatic certificate management.
+Database: PostgreSQL – featuring idempotent seeding logic.
 
-Infrastructure: Docker & GitHub Actions (CI/CD) for automated build verification.
+Security: Tailscale – automated TLS certificate management.
 
-Database: PostgreSQL (simulating store-local persistence).
+CI/CD: GitHub Actions – automated build verification for all services.
 
 📊 SRE & Observability
-We don't just "log text"; we capture Golden Signals. The server emits structured JSON logs to stdout, ready to be ingested by ELK or Grafana Loki.
+By using log/slog, we capture Golden Signals across our services. This allows us to pinpoint if latency is occurring in the Web Host or the Scanner service.
 
-Example Log Entry:
+Standardized Log Format:
 
 JSON
 {
-  "time": "2026-02-20T13:04:47Z",
+  "time": "2026-02-20T13:05:01Z",
   "level": "INFO",
   "msg": "http_request",
-  "method": "GET",
-  "path": "/product",
-  "status": 200,
-  "lat_ms": 1,
-  "ua": "iPhone; CPU iPhone OS 18_7..."
+  "service": "scanner-service",
+  "method": "POST",
+  "path": "/sell",
+  "lat_ms": 14,
+  "ua": "iPhone OS 18_7..."
 }
-This allows us to monitor p99 latency differences between mobile hardware at the edge.
+🚀 SRE Workflow
+We use a unified Makefile to manage the microservice lifecycle:
 
-🚀 Quick Start (SRE Workflow)
-1. Prerequisites
-Ensure you have the Tailscale certificates in the root directory:
+make run: Boots the environment with validated TLS certificates.
 
-Bash
-sudo tailscale cert your-node.ts.net
-2. Run Locally
-Use the provided Makefile to handle environment variables and permissions:
+make ship: Executes the SRE pipeline—Compiles, Commits, and Pushes to GitHub.
 
-Bash
-make run
-3. Deploy/Ship
-Automated build check and repository sync:
-
-Bash
-make ship
 📂 Project Structure
 Plaintext
 retail-backbone-gcp/
-├── cmd/server/main.go   # Entry point: Middleware-driven 'Golden Signals' logging
-├── internal/database/   # Idempotent schema & PostgreSQL logic
-├── web/index.html       # Web-Scanner UI optimized for mobile edge devices
-├── Makefile             # SRE Automation for builds and deployment
-├── .github/workflows/   # CI/CD: Automated Go build & test on every push
-└── certs/               # (Gitignored) Tailscale TLS certificates
+├── cmd/server/main.go   # Microservice entry: Decoupled Web & Scanner logic
+├── internal/database/   # PostgreSQL connection & Seeding
+├── web/index.html       # Scanner UI (Optimized for iPhone/S25)
+├── Makefile             # SRE automation tool
+├── .github/workflows/   # CI/CD Build pipeline
+└── .gitignore           # Security: Certificates are never leaked
