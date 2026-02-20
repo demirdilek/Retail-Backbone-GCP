@@ -93,27 +93,47 @@ func main() {
 	// 1. Try to connect
 	db, err := database.InitDB(connStr)
 	if err != nil {
-		log.Fatalf("❌ Database connection failed: %v", err)
+		logger.Error("❌ Database connection failed: %v", err)
+                os.Exit(1)
 	}
 	defer db.Close()
 
 	// 2. Try to create the schema
 	err = database.CreateSchema(db)
 	if err != nil {
-		log.Fatalf("❌ Schema creation failed: %v", err)
+		logger.Error("❌ Schema creation failed: %v", err)
+                os.Exit(1)
 	}
         err = database.SeedDatabase(db, "inventory.json") // Adjust path if needed
         if err != nil {
-                log.Fatalf("❌ Seeding failed: %v", err)
+                logger.Error("❌ Seeding failed: %v", err)
+                os.Exit(1)
         }
-	log.Println("🚀 SRE SUCCESS: Database is connected and schema is ready!")
+	logger.Info("🚀 SRE SUCCESS: Database is connected and schema is ready!")
         http.HandleFunc("/product", metricsMiddleware(handleGetProduct(db)))
         http.HandleFunc("/sell", metricsMiddleware(handleSell(db)))
         http.Handle("/", http.FileServer(http.Dir("./web")))
-        // Replace the old ListenAndServe with this:
-        certFile := "retail-server.tailb0ad6a.ts.net.crt"
-        keyFile  := "retail-server.tailb0ad6a.ts.net.key"
+        // Nutzt die Umgebungsvariable, falls gesetzt, sonst den Standardpfad
+        certFile := os.Getenv("CERT_PATH")
+        if certFile == "" {
+            certFile = "/etc/ssl/certs/cert.pem" // Dein Standard auf dem HP
+        }
 
-        log.Println("🔐 Secure Server starting on https://retail-server.tailb0ad6a.ts.net")
-        log.Fatal(http.ListenAndServeTLS(":443", certFile, keyFile, nil))
+        keyFile := os.Getenv("KEY_PATH")
+        if keyFile == "" {
+        keyFile = "/etc/ssl/private/key.pem"
+        }       
+        // Log the startup attempt
+        logger.Info("🔐 Secure Server starting", "url", "https://retail-server.tailb0ad6a.ts.net")
+
+        // Start the server synchronously to catch the error immediately
+        err = http.ListenAndServeTLS(":443", certFile, keyFile, nil)
+        if err != nil {
+            // Critical: If the server fails to start, we must know why
+            logger.Error("Server crashed during startup", "reason", err.Error())
+    
+            // Fallback: Print to standard error in case the logger fails
+            os.Stderr.WriteString("CRITICAL: " + err.Error() + "\n")
+            os.Exit(1)
+        }
 }

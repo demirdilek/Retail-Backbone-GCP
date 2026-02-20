@@ -28,3 +28,5 @@ coverage.txt
 .vscode/
 .idea/
 .DS_Store
+*.crt
+*.key
