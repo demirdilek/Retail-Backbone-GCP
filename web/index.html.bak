@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Retail Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; background: #f4f4f4; }
+        #reader { width: 100%; max-width: 500px; margin: auto; background: white; border-radius: 8px; overflow: hidden; }
+        #result { margin-top: 20px; padding: 15px; background: white; border-radius: 8px; min-height: 50px; transition: opacity 0.3s; }
+        .product-card { border-left: 5px solid #28a745; padding: 10px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h2>Store Scanner</h2>
+    <div id="reader"></div>
+    <div id="result">Ready to scan...</div>
+
+    <script>
+        let isScanning = false;
+
+        function onScanSuccess(decodedText) {
+            if (isScanning) return; 
+            
+            isScanning = true; 
+            document.getElementById('result').style.opacity = "0.5";
+
+            fetch(`/product?ean=${decodedText}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Product not found');
+                    return response.json();
+                })
+                
+            .then(data => {
+                document.getElementById('result').innerHTML = `
+                    <div class="product-card">
+                    <strong>${data.name}</strong><br>
+                     Price: ${data.price_euro}€ | Stock: <span id="stock-count">${data.stock_quantity}</span>
+                     <br><br>
+                        <button onclick="processSale('${data.ean}')" 
+                        style="width: 100%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1em;">
+                        Confirm Sale (-1)
+                    </button>
+                     </div>
+                 `;
+            })
+                .catch(err => {
+                    document.getElementById('result').innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
+                })
+                .finally(() => {
+                    // 3 second cooldown
+                    setTimeout(() => {
+                        isScanning = false;
+                        document.getElementById('result').style.opacity = "1.0";
+                    }, 3000);
+                });
+        }
+function processSale(ean) {
+    fetch(`/sell?ean=${ean}`, { method: 'POST' })
+        .then(response => {
+            if (!response.ok) throw new Error('Sold out or error');
+            return response.json();
+        })
+        .then(data => {
+            // Update the number on screen instantly
+            document.getElementById('stock-count').innerText = data.new_stock;
+            alert("✅ Sale processed!");
+        })
+        .catch(err => alert("❌ " + err.message));
+}
+        // Initialize scanner with portrait-friendly settings
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0 
+            }
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+</html>
