@@ -1,8 +1,22 @@
-cccddnrbkddhvfdbkucdjdbthecnjlkfjlbltivcif
+services:
+  # Your Go Scanner Service
+  scanner-service:
+    build: .
+    ports:
+      - "8443:443"
+    environment:
+      - DATABASE_URL=postgres://retail_user:retail_password@db:5432/retail_backbone?sslmode=disable
+      - CERT_PATH=/etc/ssl/certs/cert.pem
+      - KEY_PATH=/etc/ssl/private/key.pem
+    depends_on:
+      - db
+    volumes:
+      - ./certs/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - ./certs/key.pem:/etc/ssl/private/key.pem:ro
 
+  # PostgreSQL Database
   db:
-    image: postgres:16-alpine
-    restart: always
+    image: postgres:15-alpine
     environment:
       POSTGRES_USER: retail_user
       POSTGRES_PASSWORD: retail_password
@@ -10,7 +24,24 @@ cccddnrbkddhvfdbkucdjdbthecnjlkfjlbltivcif
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/vat/lib/postgressql/data
+      - postgres_data:/var/lib/postgresql/data
+
+  # Prometheus (The Collector for your Golden Signals)
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+  
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
 
 volumes:
-  postgres_data:    
+  postgres_data:

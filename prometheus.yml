@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s # Fast scraping for real-time edge monitoring
+
+scrape_configs:
+  - job_name: 'go-scanner'
+    static_configs:
+      - targets: ['scanner-service:443']
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true # Since we use Tailscale/Internal certs

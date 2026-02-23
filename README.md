@@ -1,7 +1,7 @@
-Retail-Backbone-GCP 🚀
+#Retail-Backbone-GCP 🚀
 A resilient, microservice-based architecture designed to synchronize retail operations with Google Cloud Platform.
 
-🏗 The Architecture
+#🏗 The Architecture
 This project demonstrates a high-availability Edge-Computing approach:
 
 Microservices: Decoupled Go services for Web Hosting (UI delivery) and Barcode/Product Scanning.
@@ -12,7 +12,7 @@ Secure Networking: Zero-trust connectivity via Tailscale TLS for encrypted edge-
 
 Persistence: PostgreSQL at the edge for robust, relational data handling.
 
-🛠 Tech Stack
+#🛠 Tech Stack
 Language: Go (Golang) – optimized for low-latency microservices.
 
 Database: PostgreSQL – featuring idempotent seeding logic.
@@ -21,12 +21,12 @@ Security: Tailscale – automated TLS certificate management.
 
 CI/CD: GitHub Actions – automated build verification for all services.
 
-📊 SRE & Observability
+#📊 SRE & Observability
 By using log/slog, we capture Golden Signals across our services. This allows us to pinpoint if latency is occurring in the Web Host or the Scanner service.
 
 Standardized Log Format:
 
-JSON
+```JSON
 {
   "time": "2026-02-20T13:05:01Z",
   "level": "INFO",
@@ -37,7 +37,9 @@ JSON
   "lat_ms": 14,
   "ua": "iPhone OS 18_7..."
 }
-🚀 SRE Workflow
+```
+
+#🚀 SRE Workflow
 We use a unified Makefile to manage the microservice lifecycle:
 
 make run: Boots the environment with validated TLS certificates.
@@ -45,7 +47,7 @@ make run: Boots the environment with validated TLS certificates.
 make ship: Executes the SRE pipeline—Compiles, Commits, and Pushes to GitHub.
 
 📂 Project Structure
-Plaintext
+```text
 retail-backbone-gcp/
 ├── cmd/server/main.go   # Microservice entry: Decoupled Web & Scanner logic
 ├── internal/database/   # PostgreSQL connection & Seeding
@@ -53,3 +55,4 @@ retail-backbone-gcp/
 ├── Makefile             # SRE automation tool
 ├── .github/workflows/   # CI/CD Build pipeline
 └── .gitignore           # Security: Certificates are never leaked
+```
