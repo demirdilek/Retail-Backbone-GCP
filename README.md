@@ -1,58 +1,63 @@
-#Retail-Backbone-GCP 🚀
-A resilient, microservice-based architecture designed to synchronize retail operations with Google Cloud Platform.
+# Retail Edge - Backbone (GCP Edition)
 
-#🏗 The Architecture
-This project demonstrates a high-availability Edge-Computing approach:
+A high-performance, resilient retail backend service written in **Go**, designed for edge computing environments. This system handles product lookups, transactions, and real-time inventory synchronization with integrated **SRE monitoring**.
 
-Microservices: Decoupled Go services for Web Hosting (UI delivery) and Barcode/Product Scanning.
 
-Observability: Structured JSON logging for real-time latency tracking (SRE Standard).
 
-Secure Networking: Zero-trust connectivity via Tailscale TLS for encrypted edge-to-cloud communication.
+## 🚀 Features
 
-Persistence: PostgreSQL at the edge for robust, relational data handling.
+* **Atomic Transactions:** Secure `/checkout` and `/restock` operations using PostgreSQL.
+* **Edge-First Security:** Full **TLS/HTTPS** support using **Tailscale** certificates for both the Go API and Grafana.
+* **SRE Observability:** Native Prometheus integration tracking the **Four Golden Signals**.
+* **Resilient Database Layer:** Automatic schema migration and idempotent data seeding from `inventory.json`.
+* **Idempotency:** Uses `ON CONFLICT (ean) DO UPDATE` logic to ensure data consistency across restarts without duplicates.
 
-#🛠 Tech Stack
-Language: Go (Golang) – optimized for low-latency microservices.
+---
 
-Database: PostgreSQL – featuring idempotent seeding logic.
+## 🛠 Tech Stack
 
-Security: Tailscale – automated TLS certificate management.
+* **Backend:** Go (Golang)
+* **Database:** PostgreSQL 15+
+* **Infrastructure:** Docker & Docker Compose
+* **Networking/Security:** Tailscale (Automated TLS)
+* **Monitoring:** Prometheus & Grafana
 
-CI/CD: GitHub Actions – automated build verification for all services.
+---
 
-#📊 SRE & Observability
-By using log/slog, we capture Golden Signals across our services. This allows us to pinpoint if latency is occurring in the Web Host or the Scanner service.
+## 📊 Monitoring (The Four Golden Signals)
 
-Standardized Log Format:
+This service exposes a `/metrics` endpoint for Prometheus. We track the health of the **Retail Edge** nodes using:
 
-```JSON
-{
-  "time": "2026-02-20T13:05:01Z",
-  "level": "INFO",
-  "msg": "http_request",
-  "service": "scanner-service",
-  "method": "POST",
-  "path": "/sell",
-  "lat_ms": 14,
-  "ua": "iPhone OS 18_7..."
-}
+| Signal | Metric Name | Description |
+| :--- | :--- | :--- |
+| **Latency** | `retail_edge_latency_seconds` | P95 response time for transactions and lookups. |
+| **Traffic** | `retail_edge_latency_seconds_count` | Throughput measured in requests per minute. |
+| **Errors** | `retail_edge_errors_total` | Error rate (HTTP 4xx/5xx) per endpoint. |
+| **Saturation** | `go_memstats_alloc_bytes` | Memory and CPU pressure on the edge node. |
+
+
+
+---
+
+## ⚙️ Setup & Installation
+
+### 1. Prerequisites
+* Docker & Docker Compose installed.
+* Tailscale installed on the host machine.
+* Tailscale certificates generated for your node:
+    ```bash
+    tailscale cert retail-server.tailb0ad6a.ts.net
+    ```
+
+### 2. Configuration
+The system expects the following certificate files in the root directory (these are ignored by git for security):
+* `retail-server.tailb0ad6a.ts.net.crt`
+* `retail-server.tailb0ad6a.ts.net.key`
+
+### 3. Run the System
+```bash
+docker-compose up -d
 ```
+## 📝 License
 
-#🚀 SRE Workflow
-We use a unified Makefile to manage the microservice lifecycle:
-
-make run: Boots the environment with validated TLS certificates.
-
-make ship: Executes the SRE pipeline—Compiles, Commits, and Pushes to GitHub.
-
-📂 Project Structure
-```text
-retail-backbone-gcp/
-├── cmd/server/main.go   # Microservice entry: Decoupled Web & Scanner logic
-├── internal/database/   # PostgreSQL connection & Seeding
-├── web/index.html       # Scanner UI (Optimized for iPhone/S25)
-├── Makefile             # SRE automation tool
-├── .github/workflows/   # CI/CD Build pipeline
-└── .gitignore           # Security: Certificates are never leaked
-```
+Distributed under the MIT License. See `LICENSE` for more information.
