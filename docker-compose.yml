@@ -1,18 +1,25 @@
+version: '3.8'
+
 services:
-  # Your Go Scanner Service
+  # Your Go Scanner Service (Retail Edge)
   scanner-service:
     build: .
     ports:
       - "8443:443"
     environment:
       - DATABASE_URL=postgres://retail_user:retail_password@db:5432/retail_backbone?sslmode=disable
-      - CERT_PATH=/etc/ssl/certs/cert.pem
-      - KEY_PATH=/etc/ssl/private/key.pem
+      # MATCH THESE TO THE VOLUME TARGETS BELOW
+      - CERT_PATH=/app/cert.crt
+      - KEY_PATH=/app/cert.key
     depends_on:
-      - db
+      db:
+        condition: service_healthy # Wait for DB to be fully ready
     volumes:
-      - ./certs/cert.pem:/etc/ssl/certs/cert.pem:ro
-      - ./certs/key.pem:/etc/ssl/private/key.pem:ro
+      - ./.web:/app/.web
+      # Mount Tailscale certs from host to /app/ in container
+      - ./retail-server.tailb0ad6a.ts.net.crt:/app/cert.crt:ro
+      - ./retail-server.tailb0ad6a.ts.net.key:/app/cert.key:ro
+      - ./inventory.json:/app/inventory.json:ro
 
   # PostgreSQL Database
   db:
@@ -23,6 +30,11 @@ services:
       POSTGRES_DB: retail_backbone
     ports:
       - "5432:5432"
+    healthcheck: # SRE Best Practice: Ensure DB is ready before backend starts
+      test: ["CMD-SHELL", "pg_isready -U retail_user -d retail_backbone"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -34,12 +46,21 @@ services:
     ports:
       - "9090:9090"
   
+  # Grafana (The Visualization for your Golden Signals)
   grafana:
     image: grafana/grafana:latest
     ports:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_PROTOCOL=https
+      - GF_SERVER_ROOT_URL=https://retail-server.tailb0ad6a.ts.net:3000
+      - GF_SERVER_DOMAIN=retail-server.tailb0ad6a.ts.net
+      - GF_SERVER_CERT_FILE=/etc/grafana/cert.crt
+      - GF_SERVER_CERT_KEY=/etc/grafana/cert.key
+    volumes:
+      - ./retail-server.tailb0ad6a.ts.net.crt:/etc/grafana/cert.crt:ro
+      - ./retail-server.tailb0ad6a.ts.net.key:/etc/grafana/cert.key:ro
     depends_on:
       - prometheus
 

@@ -1,149 +1,238 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Retail Scanner Pro</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retail Edge | POS & Receiving</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
             --primary-green: #28a745;
+            --receiving-blue: #007bff;
+            --bg-gray: #e9ecef;
+            --receipt-white: #ffffff;
             --error-red: #dc3545;
-            --bg-gray: #f4f4f4;
         }
 
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            text-align: center; margin: 0; padding: 20px; background: var(--bg-gray); 
+            font-family: -apple-system, system-ui, sans-serif; 
+            margin: 0; padding: 10px; background: var(--bg-gray); 
+            display: flex; flex-direction: column; align-items: center;
         }
         
-        /* Header & Status */
-        .header { display: flex; justify-content: space-between; align-items: center; max-width: 500px; margin: 0 auto 15px; }
-        #server-status { font-size: 0.8em; padding: 5px 10px; border-radius: 12px; background: #ddd; }
-        .online { background: #d4edda !important; color: #155724; }
-        .offline { background: #f8d7da !important; color: #721c24; }
+        /* SRE Header */
+        .header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #server-status { font-size: 11px; padding: 4px 10px; border-radius: 15px; font-weight: bold; }
+        .online { background: #d4edda; color: #155724; }
+        .offline { background: #f8d7da; color: #721c24; }
+
+        /* Mode Selector */
+        .mode-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 400px; margin-bottom: 15px; }
+        .mode-btn { 
+            padding: 12px; border: 2px solid #ccc; border-radius: 8px; background: white;
+            font-weight: bold; cursor: pointer; font-size: 0.9em; transition: 0.2s;
+        }
+        .mode-btn.active-sell { border-color: var(--primary-green); color: var(--primary-green); background: #f0fff4; }
+        .mode-btn.active-receiving { border-color: var(--receiving-blue); color: var(--receiving-blue); background: #f0f7ff; }
 
         /* Scanner */
-        #reader { 
-            width: 100%; max-width: 500px; margin: auto; background: white; 
-            border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-        }
-        
-        #reader__scan_region video { 
-            object-fit: cover !important; 
-        }
+        #reader { width: 100%; max-width: 350px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.15); background: white; }
 
-        /* Results & Messages */
-        #result { margin-top: 20px; padding: 15px; background: white; border-radius: 12px; min-height: 60px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        #status-msg { font-weight: bold; margin-top: 10px; height: 24px; transition: all 0.3s; }
-        
-        .product-card { border-left: 5px solid var(--primary-green); padding: 10px; text-align: left; }
-        
-        button { 
-            cursor: pointer; width: 100%; padding: 15px; background: var(--primary-green); 
-            color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1em;
-            margin-top: 15px; transition: opacity 0.2s;
+        /* Receipt (Cashier Mode) */
+        .receipt {
+            background: var(--receipt-white);
+            margin: 20px auto;
+            padding: 20px;
+            width: 280px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            font-family: 'Courier New', Courier, monospace;
+            border-bottom: 6px dotted #bbb;
         }
-        button:active { opacity: 0.8; }
+        .receipt-header { text-align: center; border-bottom: 1px dashed #000; margin-bottom: 12px; padding-bottom: 10px; font-size: 0.8em; }
+        .receipt-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; white-space: pre; }
+        .receipt-total { border-top: 1px double #000; margin-top: 12px; padding-top: 8px; font-weight: bold; display: flex; justify-content: space-between; }
+
+        /* Receiving Card */
+        .card { background: white; padding: 20px; border-radius: 12px; width: 280px; margin: 20px auto; text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .input-group { margin-top: 15px; }
+        label { font-size: 0.75em; font-weight: bold; color: #666; text-transform: uppercase; }
+        input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+
+        /* Buttons */
+        .btn-main { width: 100%; padding: 15px; color: #fff; border: none; font-weight: bold; margin-top: 15px; cursor: pointer; border-radius: 6px; }
+        .btn-checkout { background: #000; font-family: 'Courier New', monospace; }
+        .btn-update { background: var(--receiving-blue); }
+        .btn-void { background: none; border: none; color: var(--error-red); font-size: 11px; margin-top: 10px; cursor: pointer; width: 100%; text-decoration: underline; }
+
+        #status-msg { margin-top: 10px; font-size: 12px; font-weight: bold; min-height: 15px; text-align: center; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h2 style="margin:0;">Store Scanner</h2>
-        <div id="server-status">Checking Server...</div>
+        <h4 style="margin:0;">RETAIL EDGE NODE</h4>
+        <div id="server-status">CONNECTING...</div>
+    </div>
+
+    <div class="mode-selector">
+        <button id="btn-sell" class="mode-btn active-sell" onclick="setMode('sell')">🛒 CASHIER</button>
+        <button id="btn-receiving" class="mode-btn" onclick="setMode('receiving')">📥 RECEIVING</button>
     </div>
 
     <div id="reader"></div>
     <div id="status-msg"></div>
-    <div id="result">Ready to scan...</div>
+
+    <div id="action-area"></div>
 
 <script>
-    let isScanning = false;
-    let lastScannedEan = "";
+    let currentMode = 'sell';
+    let basket = [];
     let html5QrcodeScanner;
 
-    // --- SRE: Health Check Monitoring ---
-    function checkServerHealth() {
-        fetch('/health')
-            .then(res => {
-                const el = document.getElementById('server-status');
-                if (res.ok) {
-                    el.innerText = "● System Online";
-                    el.className = "online";
-                } else {
-                    throw new Error();
-                }
-            })
-            .catch(() => {
-                const el = document.getElementById('server-status');
-                el.innerText = "● System Offline";
-                el.className = "offline";
-            });
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btn-sell').className = mode === 'sell' ? 'mode-btn active-sell' : 'mode-btn';
+        document.getElementById('btn-receiving').className = mode === 'receiving' ? 'mode-btn active-receiving' : 'mode-btn';
+        document.getElementById('action-area').innerHTML = "";
+        basket = [];
+        showMsg(`Mode: ${mode.toUpperCase()}`, "#666");
     }
-    setInterval(checkServerHealth, 5000); // Alle 5 Sekunden prüfen
-    checkServerHealth();
+
+    // SRE Heartbeat Check
+    async function checkHealth() {
+        const el = document.getElementById('server-status');
+        try {
+            const res = await fetch('/healthz');
+            el.innerText = res.ok ? "● EDGE ONLINE" : "● DB ERROR";
+            el.className = res.ok ? "online" : "offline";
+        } catch {
+            el.innerText = "● OFFLINE";
+            el.className = "offline";
+        }
+    }
+    setInterval(checkHealth, 5000);
+    checkHealth();
 
     function onScanSuccess(decodedText) {
-        if (isScanning || decodedText === lastScannedEan) return;
+        if (currentMode === 'sell') {
+            addToBasket(decodedText);
+        } else {
+            showReceivingForm(decodedText);
+        }
+    }
 
-        isScanning = true;
-        lastScannedEan = decodedText;
-        
-        const resultDiv = document.getElementById('result');
-        resultDiv.style.opacity = "0.5";
+    // --- CASHIER LOGIC ---
+    async function addToBasket(ean) {
+        try {
+            const res = await fetch(`/product?ean=${ean}`);
+            if (!res.ok) throw new Error();
+            const product = await res.json();
+            basket.push(product);
+            renderReceipt();
+        } catch {
+            showMsg("❌ ITEM NOT IN MASTER DATA", "var(--error-red)");
+        }
+    }
 
-        fetch(`/product?ean=${decodedText}`, { headers: { 'Accept': 'application/json' } })
-            .then(res => {
-                if (!res.ok) throw new Error("Product not found");
-                return res.json();
-            })
-            .then(data => {
-                resultDiv.innerHTML = `
-                    <div class="product-card">
-                        <strong>${data.name}</strong><br>
-                        Price: ${data.price_euro.toFixed(2)}€ | Stock: <span id="stock-count">${data.stock_quantity}</span>
-                        <button onclick="processSale('${data.ean}')">CONFIRM SALE</button>
+    function renderReceipt() {
+        const area = document.getElementById('action-area');
+        if (basket.length === 0) { area.innerHTML = ""; return; }
+
+        let itemsHtml = basket.map(item => {
+            const name = item.name.substring(0, 16).padEnd(16, '.');
+            return `<div class="receipt-item"><span>${name}</span><span>${item.price_euro.toFixed(2)}</span></div>`;
+        }).join('');
+
+        const total = basket.reduce((sum, i) => sum + i.price_euro, 0);
+
+        area.innerHTML = `
+            <div class="receipt">
+                <div class="receipt-header"><strong>RETAIL EDGE NODE</strong><br>STORE #4011 | ${new Date().toLocaleTimeString()}</div>
+                ${itemsHtml}
+                <div class="receipt-total"><span>TOTAL EUR</span><span>${total.toFixed(2)}</span></div>
+                <button class="btn-main btn-checkout" onclick="checkout()">CHECKOUT</button>
+                <button class="btn-void" onclick="voidBasket()">VOID TRANSACTION</button>
+            </div>
+        `;
+    }
+
+    async function checkout() {
+        try {
+            const res = await fetch('/checkout', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ items: basket.map(i => i.ean) })
+            });
+            if (res.ok) {
+                showMsg("✅ TRANSACTION SYNCED", "var(--primary-green)");
+                basket = []; renderReceipt();
+            }
+        } catch { showMsg("❌ SYNC FAILED", "var(--error-red)"); }
+    }
+
+    function voidBasket() { basket = []; renderReceipt(); }
+
+    // --- RECEIVING LOGIC (Goods Inward) ---
+    async function showReceivingForm(ean) {
+        const area = document.getElementById('action-area');
+        area.innerHTML = "<p style='font-size:0.8em;'>Syncing master data...</p>";
+
+        try {
+            const res = await fetch(`/product?ean=${ean}`);
+            if (!res.ok) throw new Error();
+            const product = await res.json();
+
+            area.innerHTML = `
+                <div class="card" style="border-top: 4px solid var(--receiving-blue);">
+                    <strong style="color: var(--receiving-blue); font-size: 0.8em;">📥 GOODS RECEIVING</strong>
+                    <div style="margin: 15px 0; font-family: monospace;">
+                        <div style="font-weight:bold;">${product.name.substring(0, 16).toUpperCase()}</div>
+                        <div style="font-size: 0.85em; margin-top: 5px;">CURRENT STOCK: <span style="font-weight:bold;">${product.stock_quantity}</span></div>
                     </div>
-                `;
-            })
-            .catch(err => {
-                resultDiv.innerHTML = `<span style="color:var(--error-red);">${err.message}</span>`;
-            })
-            .finally(() => {
-                setTimeout(() => {
-                    isScanning = false;
-                    lastScannedEan = ""; 
-                    resultDiv.style.opacity = "1.0";
-                }, 2000); // 2 Sekunden Cooldown
-            });
+                    <div class="input-group">
+                        <label>Incoming Units:</label>
+                        <input type="number" id="receive-qty" placeholder="0" autofocus>
+                    </div>
+                    <button class="btn-main btn-update" onclick="submitReceiving('${ean}')">UPDATE INVENTORY</button>
+                </div>
+            `;
+        } catch {
+            showMsg("❌ UNKNOWN PRODUCT", "var(--error-red)");
+            area.innerHTML = "";
+        }
     }
 
-    function processSale(ean) {
-        const statusMsg = document.getElementById('status-msg');
-        
-        fetch(`/sell?ean=${ean}`, { method: 'POST' })
-            .then(response => {
-                if (!response.ok) return response.text().then(text => { throw new Error(text) });
-                return response.json();
-            })
-            .then(data => {
-                document.getElementById('stock-count').innerText = data.new_stock;
-                statusMsg.style.color = "var(--primary-green)";
-                statusMsg.innerText = "✅ Sale Successful!";
-                setTimeout(() => { statusMsg.innerText = ""; }, 3000);
-            })
-            .catch(err => {
-                statusMsg.style.color = "var(--error-red)";
-                statusMsg.innerText = "❌ " + err.message;
-                setTimeout(() => { statusMsg.innerText = ""; }, 3000);
+    async function submitReceiving(ean) {
+        const qty = parseInt(document.getElementById('receive-qty').value);
+        if (isNaN(qty) || qty <= 0) return;
+
+        try {
+            const res = await fetch('/restock', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ean: ean, add_amount: qty })
             });
+            if (res.ok) {
+                showMsg(`🚀 UPDATED: +${qty} UNITS`, "var(--primary-green)");
+                document.getElementById('action-area').innerHTML = "";
+            }
+        } catch { showMsg("❌ UPDATE FAILED", "var(--error-red)"); }
     }
 
-    html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader", { fps: 15, qrbox: 250, aspectRatio: 1.0 }
-    );
+    function showMsg(txt, col) {
+        const m = document.getElementById('status-msg');
+        m.innerText = txt; 
+        m.style.color = col;
+        setTimeout(() => m.innerText = "", 3000);
+    }
+
+    // Scanner Initialisierung
+    html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+        fps: 10, 
+        qrbox: 220,
+        aspectRatio: 1.0 
+    });
     html5QrcodeScanner.render(onScanSuccess);
 </script>
 </body>
-</html>
+</html>   
