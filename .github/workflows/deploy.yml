@@ -49,14 +49,34 @@ jobs:
           terraform apply -auto-approve -var="project_id=retail-backbone-gcp"
 
       # 4. Containerization: Package for GKE / Retail Edge Node
-      - name: Configure Docker Authentication
-        run: gcloud auth configure-docker --quiet
-        
+      - name: Configure Docker for Artifact Registry
+        run: |
+          # This tells Docker to use gcloud as a credential helper for your specific region
+          gcloud auth configure-docker europe-west3-docker.pkg.dev --quiet        
+     
       - name: Build and Push Container Image
         run: |
-          IMAGE_TAG="gcr.io/retail-backbone-gcp/retail-edge-node:${{ github.sha }}"
+          IMAGE_TAG="europe-west3-docker.pkg.dev/retail-backbone-gcp/retail-repo/retail-edge-node:${{ github.sha }}"
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
+      # 5. Infrastructure and Deployment (SRE Best Practices)
+      - name: Set up GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: 'retail-edge-cluster'
+          location: 'europe-west3-b'
+
+      - name: Deploy to GKE
+        run: |
+          # Apply the basic Kubernetes manifests (Deployment & Service)
+          kubectl apply -f k8s/deployment.yaml
+          
+          # Update the deployment to use the specific container image version from this commit
+          kubectl set image deployment/retail-edge-node \
+            retail-edge-node=europe-west3-docker.pkg.dev/retail-backbone-gcp/retail-repo/retail-edge-node:${{ github.sha }}
+          
+          # Wait for the rollout to finish to ensure the new version is healthy
+          kubectl rollout status deployment/retail-edge-node
 
       # 5. Deployment Notification or Kubernetes Update (Placeholders)
       - name: Deployment Success Summary

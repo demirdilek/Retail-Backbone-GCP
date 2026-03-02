@@ -161,104 +161,22 @@ func handleRestock(db *sql.DB) http.HandlerFunc {
 }
 
 func healthHandler(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := db.Ping(); err != nil {
-			logger.Error("SRE Health Check: Database unreachable", "error", err)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("✅ OK"))
-	}
+    return func(w http.ResponseWriter, r *http.Request) {
+        // Create a context with a short timeout for the health check
+        ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+        defer cancel()
+
+        if err := db.PingContext(ctx); err != nil {
+            logger.Error("SRE Health Check: Database unreachable", "error", err)
+            w.WriteHeader(http.StatusServiceUnavailable)
+            w.Write([]byte("❌ Service Unavailable"))
+            return
+        }
+        
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("✅ OK"))
+    }
 }
-
-func setupInitialMetrics() {
-	endpoints := []string{"/product", "/checkout", "/restock"}
-
-	for _, path := range endpoints {
-		// Initialisiert den Traffic-Counter (Teil des Histograms) auf 0
-		// Wir nutzen status "200", da dies der Normalzustand ist
-		httpDuration.WithLabelValues(path, "200").Observe(0)
-
-		// Initialisiert den Error-Counter auf 0
-		// Wir nutzen einen generischen Label-Wert, um die Metrik zu registrieren
-		errorCounter.WithLabelValues(path, "none").Add(0)
-	}
-}
-
-// --- MAIN ---
-
-func main() {
-	connStr := os.Getenv("DATABASE_URL")
-	if connStr == "" {
-		connStr = "postgres://retail_user:retail_password@db:5432/retail_backbone?sslmode=disable"
-	}
-
-	var db *sql.DB
-	var err error
-	for i := 0; i < 5; i++ {
-		db, err = database.InitDB(connStr)
-		if err == nil {
-			if err = db.Ping(); err == nil {
-				break
-			}
-		}
-		logger.Warn("Database not ready, retrying in 2s...", "attempt", i+1)
-		time.Sleep(2 * time.Second)
-	}
-
-	if err != nil {
-		logger.Error("❌ Critical: DB connection failed", "err", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-
-	// --- DATABASE INITIALIZATION ---
-
-	// Step 1: Ensure the database schema (tables) exists
-	if err := database.CreateSchema(db); err != nil {
-		logger.Error("❌ Schema creation failed", "err", err)
-		os.Exit(1)
-	}
-
-	// Step 2: Seed master data from inventory.json
-	// We use a warning instead of a fatal error so the server still starts
-	// even if the seed file is missing in the container.
-	if err := database.SeedDatabase(db, "inventory.json"); err != nil {
-		logger.Warn("⚠️ Seeding skipped or failed", "reason", err.Error())
-	} else {
-		logger.Info("✅ Database master data synchronized")
-	}
-
-	setupInitialMetrics()
-
-	// 2. Router Setup
-	mux := http.NewServeMux()
-	mux.HandleFunc("/product", metricsMiddleware(handleGetProduct(db)))
-	mux.HandleFunc("/checkout", metricsMiddleware(handleCheckout(db))) // NEW: Checkout Route
-	mux.HandleFunc("/restock", metricsMiddleware(handleRestock(db)))
-	mux.HandleFunc("/healthz", healthHandler(db))
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/", http.FileServer(http.Dir("./web")))
-
-	// 3. Server Configuration (TLS)
-	certFile := os.Getenv("CERT_PATH")
-	keyFile := os.Getenv("KEY_PATH")
-
-	if certFile == "" || keyFile == "" {
-		certFile = "cert.crt"
-		keyFile = "cert.key"
-	}
-
-	if _, err := os.Stat(certFile); os.IsNotExist(err) {
-		logger.Error("❌ Critical: TLS certificates missing", "path", certFile)
-		os.Exit(1)
-	}
-
-	server := &http.Server{
-		Addr:    ":443",
-		Handler: mux,
-	}
 
 	// 4. Graceful Shutdown
 	stop := make(chan os.Signal, 1)
