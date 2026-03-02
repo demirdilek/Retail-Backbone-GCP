@@ -7,13 +7,14 @@ provider "google" {
 # GKE Cluster definition
 resource "google_container_cluster" "retail_edge" {
   name     = "retail-edge-cluster"
-  location = "europe-west3-a"
+  location = "europe-west3-b"
 
   # Minimal configuration for testing to keep costs low
   initial_node_count = 1
 
   node_config {
     machine_type = "e2-medium"
+    spot         = true # cheaper and better for testing, but not suitable for production
     
     # Needed for Workload Identity and Logging
     oauth_scopes = [
