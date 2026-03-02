@@ -1,28 +1,31 @@
 # Google Cloud Provider configuration
-# This tells Terraform which cloud we are talking to
 provider "google" {
-  project = "retail-backbone-project" # We will replace this later
-  region  = "europe-west3"            # Frankfurt is ideal for German retail
+  project = var.project_id
+  region  = "europe-west3" # Frankfurt is a good choice for Retail Edge in Germany
 }
 
-# Pub/Sub Topic: The mailbox for our warehouse events
-# This is where the S25 sends the data
-resource "google_pubsub_topic" "warehouse_events" {
-  name = "warehouse-stock-events"
+# GKE Cluster definition
+resource "google_container_cluster" "retail_edge" {
+  name     = "retail-edge-cluster"
+  location = "europe-west3-a"
 
-  labels = {
-    environment = "dev"
-    component   = "backbone"
+  # Minimal configuration for testing to keep costs low
+  initial_node_count = 1
+
+  node_config {
+    machine_type = "e2-medium"
+    
+    # Needed for Workload Identity and Logging
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
   }
+
+  # Ensure the cluster is deleted cleanly
+  deletion_protection = false
 }
 
-# A subscription for the processing service
-# This represents the system that will later read the data
-resource "google_pubsub_subscription" "warehouse_processor" {
-  name  = "warehouse-stock-processor-sub"
-  topic = google_pubsub_topic.warehouse_events.name
-
-  # Message retention (how long the cloud keeps data if the processor is down)
-  message_retention_duration = "604800s" # 7 days
+variable "project_id" {
+  description = "The GCP Project ID"
+  type        = string
 }
-

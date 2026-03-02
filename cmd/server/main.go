@@ -172,6 +172,20 @@ func healthHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func setupInitialMetrics() {
+	endpoints := []string{"/product", "/checkout", "/restock"}
+
+	for _, path := range endpoints {
+		// Initialisiert den Traffic-Counter (Teil des Histograms) auf 0
+		// Wir nutzen status "200", da dies der Normalzustand ist
+		httpDuration.WithLabelValues(path, "200").Observe(0)
+
+		// Initialisiert den Error-Counter auf 0
+		// Wir nutzen einen generischen Label-Wert, um die Metrik zu registrieren
+		errorCounter.WithLabelValues(path, "none").Add(0)
+	}
+}
+
 // --- MAIN ---
 
 func main() {
@@ -215,6 +229,8 @@ func main() {
 	} else {
 		logger.Info("✅ Database master data synchronized")
 	}
+
+	setupInitialMetrics()
 
 	// 2. Router Setup
 	mux := http.NewServeMux()

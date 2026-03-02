@@ -1,0 +1,63 @@
+name: "Retail Edge Deployment"
+
+on:
+  push:
+    branches: [ "main" ]
+
+# Minimum permissions required for Workload Identity Federation (WIF)
+permissions:
+  id-token: write 
+  contents: read
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 1. Authenticate with Google Cloud using OIDC (Zero Trust)
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'retail-backbone-gcp'
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'retail-backbone-sa@retail-backbone-gcp.iam.gserviceaccount.com'
+
+      # 2. Go Build & Test: Ensure 4 Golden Signals tracking remains stable
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: go.sum
+      
+      - name: Run Unit Tests
+        run: go test -v ./...
+        
+      - name: Build Go Application
+        run: go build -v -o retail-edge-binary ./cmd/server
+
+      # 3. Terraform: Infrastructure as Code (Eliminating Toil)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        
+      - name: Terraform Init & Apply
+        working-directory: ./infra/terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve -var="project_id=retail-backbone-gcp"
+
+      # 4. Containerization: Package for GKE / Retail Edge Node
+      - name: Configure Docker Authentication
+        run: gcloud auth configure-docker --quiet
+        
+      - name: Build and Push Container Image
+        run: |
+          IMAGE_TAG="gcr.io/retail-backbone-gcp/retail-edge-node:${{ github.sha }}"
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+
+      # 5. Deployment Notification or Kubernetes Update (Placeholders)
+      - name: Deployment Success Summary
+        run: echo "Retail Edge Backbone successfully deployed with version ${{ github.sha }}"
