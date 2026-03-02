@@ -22,7 +22,7 @@ jobs:
         uses: 'google-github-actions/auth@v2'
         with:
           project_id: 'retail-backbone-gcp'
-          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'retail-backbone-sa@retail-backbone-gcp.iam.gserviceaccount.com'
 
       # 2. Go Build & Test: Ensure 4 Golden Signals tracking remains stable
