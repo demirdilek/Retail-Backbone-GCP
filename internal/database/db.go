@@ -38,21 +38,21 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 func CreateSchema(db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS products (
-		ean TEXT PRIMARY KEY,
-		name TEXT NOT NULL,
-		price_euro DOUBLE PRECISION NOT NULL,
-		stock_quantity INTEGER NOT NULL
-	);
+        ean TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price_euro DOUBLE PRECISION NOT NULL,
+        stock_quantity INTEGER NOT NULL
+    );
 
-	CREATE TABLE IF NOT EXISTS sales (
-		id SERIAL PRIMARY KEY,
-		transaction_id UUID DEFAULT gen_random_uuid(),
-		ean TEXT REFERENCES products(ean),
-		quantity INTEGER NOT NULL,
-		sold_price DOUBLE PRECISION NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);`
-
+    CREATE TABLE IF NOT EXISTS sales (
+        id SERIAL PRIMARY KEY,
+        transaction_id UUID DEFAULT gen_random_uuid(),
+        ean TEXT REFERENCES products(ean),
+        quantity INTEGER NOT NULL,
+        sold_price DOUBLE PRECISION NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        synced_at TIMESTAMP WITH TIME ZONE
+    );`
 	_, err := db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("could not create schema: %w", err)

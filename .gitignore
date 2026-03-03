@@ -44,6 +44,8 @@ prometheus_data/
 .terraform/
 *.tfstate
 *.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
 
 # --- IDE & OS ---
 .vscode/

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -17,6 +18,86 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// StartSyncWorker initiates an asynchronous background routine to synchronize
+// local sales data with the GCP Backbone. This ensures offline-first resilience.
+func StartSyncWorker(db *sql.DB, backboneURL string) {
+	if backboneURL == "" {
+		logger.Warn("SRE-Sync: No GCP_BACKBONE_URL provided. Background sync is disabled.")
+		return
+	}
+
+	// Ticker defines the synchronization interval (Golden Signal: Freshness)
+	ticker := time.NewTicker(30 * time.Second)
+	go func() {
+		logger.Info("SRE-Sync: background worker started", "target", backboneURL)
+		for range ticker.C {
+			// Retrieve sales records that haven't been synced yet
+			rows, err := db.Query(`
+                SELECT id, transaction_id, ean, quantity, sold_price 
+                FROM sales 
+                WHERE synced_at IS NULL 
+                LIMIT 10`)
+
+			if err != nil {
+				logger.Error("SRE-Sync: database query failed", "error", err)
+				continue
+			}
+
+			for rows.Next() {
+				var id int
+				var txID, ean string
+				var qty int
+				var price float64
+
+				if err := rows.Scan(&id, &txID, &ean, &qty, &price); err != nil {
+					continue
+				}
+
+				// Prepare the payload for the Cloud Backbone
+				payload := map[string]interface{}{
+					"transaction_id": txID,
+					"ean":            ean,
+					"quantity":       qty,
+					"price":          price,
+					"edge_node":      "retail-edge-node-01",
+				}
+
+				// Attempt to send data to GCP via Tailscale/Cloud connection
+				if err := sendToGCP(payload, backboneURL); err != nil {
+					logger.Warn("SRE-Sync: GCP Backbone unreachable", "error", err)
+					break // Stop current cycle to implement a simple backoff
+				}
+
+				// Success: Update the local record with a sync timestamp
+				_, err = db.Exec("UPDATE sales SET synced_at = NOW() WHERE id = $1", id)
+				if err == nil {
+					logger.Info("SRE-Sync: transaction reconciled", "tx_id", txID)
+				}
+			}
+			rows.Close()
+		}
+	}()
+}
+
+// sendToGCP handles the actual HTTP POST request to the remote backbone
+func sendToGCP(data interface{}, url string) error {
+	jsonData, _ := json.Marshal(data)
+
+	// SRE Best Practice: Always use a timeout for external network calls
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Post(url+"/api/v1/sync", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("backbone returned status: %d", resp.StatusCode)
+	}
+	return nil
+}
 
 // --- SRE GOLDEN SIGNALS: METRICS ---
 var (
@@ -197,9 +278,9 @@ func setupInitialMetrics() {
 func main() {
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
-		connStr = "postgres://retail_user:retail_password@db:5432/retail_backbone?sslmode=disable"
+		// Host must exact Service-Name in K8s!
+		connStr = "postgres://postgres:edgepass123@edge-db-service:5432/retail_db?sslmode=disable"
 	}
-
 	var db *sql.DB
 	var err error
 	for i := 0; i < 5; i++ {
@@ -235,6 +316,16 @@ func main() {
 	} else {
 		logger.Info("✅ Database master data synchronized")
 	}
+
+	if err := database.SeedDatabase(db, "inventory.json"); err != nil {
+		logger.Warn("Database seeding skipped", "reason", err.Error())
+	} else {
+		logger.Info("Database master data ready")
+	}
+
+	// START SYNC WORKER: Decouple edge sales from cloud persistence
+	backboneURL := os.Getenv("GCP_BACKBONE_URL")
+	StartSyncWorker(db, backboneURL)
 
 	setupInitialMetrics()
 
