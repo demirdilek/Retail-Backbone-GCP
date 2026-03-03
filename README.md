@@ -57,6 +57,30 @@ gcloud container clusters get-credentials retail-edge-cluster \
     --zone europe-west3-b \
     --project retail-backbone-gcp
 ```
+## Architecture & CI/CD
+
+This project implements a modern Cloud-Native workflow for retail edge synchronization.
+
+### System Overview
+- **Core:** Go 1.25 service focusing on high-performance data synchronization.
+- **Infrastructure:** Managed via Terraform (GCP GKE, Artifact Registry, Networking).
+- **Monitoring:** Integrated Prometheus metrics for observing the "4 Golden Signals".
+
+### CI/CD Pipeline
+The deployment process is fully automated using GitHub Actions:
+
+1. **Quality Gate (`go.yml`):** - Runs on every push to `main`.
+   - Executes `go build` and `go vet` to ensure code integrity.
+   
+2. **Deployment (`deploy.yml`):**
+   - **Authentication:** Uses **Workload Identity Federation (OIDC)** to securely connect GitHub with Google Cloud without static service account keys.
+   - **Containerization:** Builds a production-ready Docker image using Multi-stage builds.
+   - **Registry:** Pushes the versioned image to Google Artifact Registry (`europe-west3`).
+
+### Security
+- **Identity-based Access:** No long-lived GCP JSON keys are stored in GitHub Secrets.
+- **Principle of Least Privilege:** The GitHub Service Account is restricted to `artifactregistry.writer` and `container.developer` roles.
+
 ### Troubleshooting
 
 #### Permission Error: KUBECONFIG
