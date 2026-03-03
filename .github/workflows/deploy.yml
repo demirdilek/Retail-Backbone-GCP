@@ -12,6 +12,11 @@ env:
   CLUSTER_NAME: retail-edge-cluster
   CLUSTER_ZONE: europe-west3-b
 
+#permissions to allow OIDC token generation
+permissions:
+  contents: 'read'
+  id-token: 'write'
+  
 jobs:
   deploy:
     name: Build and Push to Artifact Registry
