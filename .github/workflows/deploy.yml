@@ -35,11 +35,10 @@ jobs:
     - name: Google Auth
       uses: 'google-github-actions/auth@v2'
       with:
-        # We will need to replace this with your actual Workload Identity Provider string
-        workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/YOUR_POOL/providers/YOUR_PROVIDER'
+        workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
         service_account: 'github-action-sa@retail-backbone-gcp.iam.gserviceaccount.com'
+        project_id: 'retail-backbone-gcp'
         token_format: 'access_token'
-        project_id: ${{ env.PROJECT_ID }}
 
     # Configure Docker to use the gcloud command-line tool as a credential helper
     - name: Docker Auth
