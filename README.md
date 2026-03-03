@@ -1,63 +1,71 @@
-# Retail Edge - Backbone (GCP Edition)
+# Retail Edge Backbone
 
-A high-performance, resilient retail backend service written in **Go**, designed for edge computing environments. This system handles product lookups, transactions, and real-time inventory synchronization with integrated **SRE monitoring**.
+This project demonstrates a modern, hybrid Cloud-Edge architecture for the retail industry. It focuses on local autonomy (Edge) and central data aggregation (GCP Backbone).
 
+## Architecture Overview
 
+The system is split into two main domains:
 
-## 🚀 Features
+1.  **Cloud Backbone (GCP):**
+    * **GKE Cluster:** Central control plane and data sink.
+    * **Artifact Registry:** Centralized Docker image management.
+    * **Terraform:** Infrastructure as Code (IaC) for reproducible environments.
 
-* **Atomic Transactions:** Secure `/checkout` and `/restock` operations using PostgreSQL.
-* **Edge-First Security:** Full **TLS/HTTPS** support using **Tailscale** certificates for both the Go API and Grafana.
-* **SRE Observability:** Native Prometheus integration tracking the **Four Golden Signals**.
-* **Resilient Database Layer:** Automatic schema migration and idempotent data seeding from `inventory.json`.
-* **Idempotency:** Uses `ON CONFLICT (ean) DO UPDATE` logic to ensure data consistency across restarts without duplicates.
+2.  **Retail Edge (Store/Local):**
+    * **Go SyncWorker:** Captures local scans and handles reliable synchronization.
+    * **Docker Compose:** Local runtime environment (Postgres, Go-Service).
+    * **Tailscale:** Secure WireGuard-based networking between Edge and Cloud.
 
----
+## Prerequisites
 
-## 🛠 Tech Stack
+To manage this environment, you need the following tools installed:
 
-* **Backend:** Go (Golang)
-* **Database:** PostgreSQL 15+
-* **Infrastructure:** Docker & Docker Compose
-* **Networking/Security:** Tailscale (Automated TLS)
-* **Monitoring:** Prometheus & Grafana
+* **Go (1.21+):** For local development of the SyncWorker.
+* **Docker & Docker Compose:** To run the local store environment.
+* **Google Cloud SDK (gcloud):** To interact with GCP.
+* **Terraform:** To manage the Cloud infrastructure.
+* **kubectl:** To manage the GKE cluster.
+* **Tailscale:** For secure cross-site networking.
 
----
+## Infrastructure Setup (Cloud)
 
-## 📊 Monitoring (The Four Golden Signals)
+The Cloud Backbone is managed via Terraform. It sets up the central registry and the GKE cluster.
 
-This service exposes a `/metrics` endpoint for Prometheus. We track the health of the **Retail Edge** nodes using:
-
-| Signal | Metric Name | Description |
-| :--- | :--- | :--- |
-| **Latency** | `retail_edge_latency_seconds` | P95 response time for transactions and lookups. |
-| **Traffic** | `retail_edge_latency_seconds_count` | Throughput measured in requests per minute. |
-| **Errors** | `retail_edge_errors_total` | Error rate (HTTP 4xx/5xx) per endpoint. |
-| **Saturation** | `go_memstats_alloc_bytes` | Memory and CPU pressure on the edge node. |
-
-
-
----
-
-## ⚙️ Setup & Installation
-
-### 1. Prerequisites
-* Docker & Docker Compose installed.
-* Tailscale installed on the host machine.
-* Tailscale certificates generated for your node:
-    ```bash
-    tailscale cert retail-server.tailb0ad6a.ts.net
-    ```
-
-### 2. Configuration
-The system expects the following certificate files in the root directory (these are ignored by git for security):
-* `retail-server.tailb0ad6a.ts.net.crt`
-* `retail-server.tailb0ad6a.ts.net.key`
-
-### 3. Run the System
+### 1. Authentication
+Ensure you are authenticated with Google Cloud:
 ```bash
-docker-compose up -d
+gcloud auth login
+gcloud auth application-default login
 ```
-## 📝 License
+
+2. Deployment
+Navigate to the terraform directory and initialize the environment:
+
+```bash
+cd terraform-backbone
+terraform init
+terraform apply
+```
+3. Connect to Cluster
+Once the apply is finished, configure kubectl to talk to your new cluster:
+
+```bash
+gcloud container clusters get-credentials retail-edge-cluster \
+    --zone europe-west3-b \
+    --project retail-backbone-gcp
+```
+### Troubleshooting
+
+#### Permission Error: KUBECONFIG
+If you encounter an error like `Unable to create private file [/etc/rancher/k3s/k3s.yaml]`:
+Your environment is pointing to a restricted system path (common if K3s was previously installed). 
+
+**Fix:**
+```bash
+unset KUBECONFIG
+```
+ Re-run the get-credentials command
+
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.

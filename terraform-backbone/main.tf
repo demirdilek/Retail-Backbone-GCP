@@ -1,3 +1,11 @@
+# Artifact Registry for Retail-Edge Images
+resource "google_artifact_registry_repository" "retail_repo" {
+  location      = "europe-west3"
+  repository_id = "retail-edge-repo"
+  description   = "Docker Repository for Retail Edge Services"
+  format        = "DOCKER"
+}
+
 # Google Cloud Provider configuration
 provider "google" {
   project = var.project_id
@@ -24,9 +32,4 @@ resource "google_container_cluster" "retail_edge" {
 
   # Ensure the cluster is deleted cleanly
   deletion_protection = false
-}
-
-variable "project_id" {
-  description = "The GCP Project ID"
-  type        = string
 }
