@@ -36,7 +36,7 @@ jobs:
       uses: 'google-github-actions/auth@v2'
       with:
         # We will need to replace this with your actual Workload Identity Provider string
-        workload_identity_provider: 'projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/YOUR_POOL/providers/YOUR_PROVIDER'
+        workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/YOUR_POOL/providers/YOUR_PROVIDER'
         service_account: 'github-action-sa@retail-backbone-gcp.iam.gserviceaccount.com'
         token_format: 'access_token'
         project_id: ${{ env.PROJECT_ID }}
