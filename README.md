@@ -2,6 +2,9 @@
 
 This project demonstrates a modern, hybrid Cloud-Edge architecture for the retail industry. It focuses on local autonomy (Edge) and central data aggregation (GCP Backbone).
 
+![Go Quality Check](https://github.com/demirdilek/Retail-Backbone-GCP/actions/workflows/go.yml/badge.svg)
+![Deployment Status](https://github.com/demirdilek/Retail-Backbone-GCP/actions/workflows/deploy.yml/badge.svg)
+
 ## Architecture Overview
 
 The system is split into two main domains:
