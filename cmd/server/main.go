@@ -362,10 +362,20 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		logger.Info("🔐 Secure Retail Edge Node starting", "addr", server.Addr)
-		if err := server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			logger.Error("Server crash", "err", err)
-			os.Exit(1)
+		if _, err := os.Stat(certFile); os.IsNotExist(err) {
+			logger.Warn("⚠️ TLS Certs missing, falling back to HTTP on :8080")
+			server.Addr = ":8080" // Override port for non-TLS
+			logger.Info("Retail Edge Node starting (Insecure)", "addr", server.Addr)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("Server crash", "err", err)
+				os.Exit(1)
+			}
+		} else {
+			logger.Info("🔐 Secure Retail Edge Node starting", "addr", server.Addr)
+			if err := server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				logger.Error("Server crash", "err", err)
+				os.Exit(1)
+			}
 		}
 	}()
 

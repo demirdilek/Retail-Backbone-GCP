@@ -24,17 +24,5 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /root/
 
-# Copy the binary from the builder stage
-COPY --from=builder /app/scanner-service .
-# Copy your web assets and inventory for the service
-COPY --from=builder /app/web ./web
-COPY --from=builder /app/inventory.json .
-
-# Create the directory for certificates (Tailscale/Edge setup)
-RUN mkdir -p /etc/ssl/certs /etc/ssl/private
-
 # Expose the HTTPS port
 EXPOSE 443
-
-# Run the service
-CMD ["./scanner-service"]

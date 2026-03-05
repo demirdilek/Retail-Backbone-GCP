@@ -58,3 +58,7 @@ Thumbs.db
 # --- Retail Edge Specifics ---
 # If you store logs locally during development
 *.log
+
+.vagrant/
+vendor/
+*.log
