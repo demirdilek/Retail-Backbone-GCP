@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -276,10 +277,9 @@ func setupInitialMetrics() {
 // --- MAIN ---
 
 func main() {
-	connStr := os.Getenv("DATABASE_URL")
+	connStr := os.Getenv("DB_DSN")
 	if connStr == "" {
-		// Host must exact Service-Name in K8s!
-		connStr = "postgres://postgres:edgepass123@edge-db-service:5432/retail_db?sslmode=disable"
+		log.Fatal("DB_DSN environment variable is not set")
 	}
 	var db *sql.DB
 	var err error
