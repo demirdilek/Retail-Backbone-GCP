@@ -49,5 +49,13 @@ jobs:
     # Build the Docker image and push it to Artifact Registry
     - name: Build and Push Container
       run: |
-        docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} .
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+        REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
+        
+        # Build with both tags
+        docker build \
+          -t $REPO_PATH:${{ github.sha }} \
+          -t $REPO_PATH:latest .
+        
+        # Push both
+        docker push $REPO_PATH:${{ github.sha }}
+        docker push $REPO_PATH:latest

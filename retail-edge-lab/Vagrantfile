@@ -1,0 +1,42 @@
+Vagrant.configure("2") do |config|
+  # Use the standard libvirt-compatible box
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.hostname = "edge-server-betzdorf-01"
+  config.vm.synced_folder ".", "/vagrant", type: "9p", accessmode: "mapped"
+
+  # Libvirt (KVM) Provider Settings
+  config.vm.provider :libvirt do |lv|
+    lv.memory = 2048
+    lv.cpus = 2
+    lv.machine_type = "q35" # Modern chipset for better performance
+    lv.video_type = "none" # We only need CLI
+  end
+
+  # Shell Provisioning
+  config.vm.provision "shell", inline: <<-SHELL
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y curl
+
+    # 1. Install Tailscale
+    curl -fsSL https://tailscale.com/install.sh | sh
+
+    # 2. Authenticate with Tailscale via OAuth
+    TS_ID="kCqwY7md1P11CNTRL"
+    TS_SECRET="***REMOVED***"
+
+    sudo tailscale up --reset \
+                --authkey="${TS_SECRET}" \
+                --hostname=edge-server-betzdorf-01 \
+                --advertise-tags=tag:edge-server
+
+    # 3. Install k3s
+    curl -sfL https://get.k3s.io | sh -
+    
+    # 4. Metadata
+    mkdir -p /etc/retail-edge
+    echo '{"store_id": "siegen-01", "region": "europe-west3"}' > /etc/retail-edge/inventory.json
+    echo "SRE LOG: Deploying Edge App from Host..."
+    # k3s looks at the shared /vagrant folder
+    sudo k3s kubectl apply -f edge-app.yaml
+  SHELL
+end
