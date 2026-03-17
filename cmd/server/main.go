@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,26 +21,59 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// --- SRE GOLDEN SIGNALS: METRICS ---
+var (
+	// Jetzt als GaugeVec, um nach Filiale (Namespace) zu filtern
+	unsyncedSalesGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "retail_edge_unsynced_sales_count",
+		Help: "Number of sales records pending synchronization to GCP.",
+	}, []string{"namespace"}) // Wichtig für die Filial-Trennung
+
+	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "retail_edge_latency_seconds",
+		Help:    "Latency of retail operations in seconds.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"path", "status"})
+
+	errorCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "retail_edge_errors_total",
+		Help: "Total number of failed retail operations.",
+	}, []string{"path", "error_type"})
+
+	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+)
+
 // StartSyncWorker initiates an asynchronous background routine to synchronize
 // local sales data with the GCP Backbone. This ensures offline-first resilience.
-func StartSyncWorker(db *sql.DB, backboneURL string) {
+func StartSyncWorker(db *sql.DB, backboneURL string, edgeNodeID string) {
 	if backboneURL == "" {
 		logger.Warn("SRE-Sync: No GCP_BACKBONE_URL provided. Background sync is disabled.")
 		return
 	}
-
+	namespace := os.Getenv("K8S_NAMESPACE")
+	if namespace == "" {
+		namespace = "unknown"
+	}
 	// Ticker defines the synchronization interval (Golden Signal: Freshness)
 	ticker := time.NewTicker(30 * time.Second)
 	go func() {
 		logger.Info("SRE-Sync: background worker started", "target", backboneURL)
 		for range ticker.C {
+			var count float64
+			err := db.QueryRow("SELECT COUNT(*) FROM sales WHERE synced_at IS NULL").Scan(&count)
+			if err == nil {
+				// Hier das Label setzen!
+				unsyncedSalesGauge.WithLabelValues(namespace).Set(count)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			// Retrieve sales records that haven't been synced yet
-			rows, err := db.Query(`
+			rows, err := db.QueryContext(ctx, `
                 SELECT id, transaction_id, ean, quantity, sold_price 
                 FROM sales 
                 WHERE synced_at IS NULL 
                 LIMIT 10`)
-
+			cancel()
 			if err != nil {
 				logger.Error("SRE-Sync: database query failed", "error", err)
 				continue
@@ -61,7 +95,7 @@ func StartSyncWorker(db *sql.DB, backboneURL string) {
 					"ean":            ean,
 					"quantity":       qty,
 					"price":          price,
-					"edge_node":      "retail-edge-node-01",
+					"edge_node":      edgeNodeID,
 				}
 
 				// Attempt to send data to GCP via Tailscale/Cloud connection
@@ -75,20 +109,24 @@ func StartSyncWorker(db *sql.DB, backboneURL string) {
 				if err == nil {
 					logger.Info("SRE-Sync: transaction reconciled", "tx_id", txID)
 				}
+				//Short request to update the unsynced sales gauge after each sync attempt
+				var count float64
+				db.QueryRow("SELECT COUNT(*) FROM sales WHERE synced_at IS NULL").Scan(&count)
+				unsyncedSalesGauge.WithLabelValues(namespace).Set(count)
 			}
 			rows.Close()
 		}
 	}()
 }
 
-// sendToGCP handles the actual HTTP POST request to the remote backbone
 func sendToGCP(data interface{}, url string) error {
 	jsonData, _ := json.Marshal(data)
-
-	// SRE Best Practice: Always use a timeout for external network calls
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	resp, err := client.Post(url+"/api/v1/sync", "application/json", bytes.NewBuffer(jsonData))
+	// Korrektur: Nur einmal /api/v1/sync anhängen
+	cleanURL := strings.TrimSuffix(url, "/") + "/api/v1/sync"
+
+	resp, err := client.Post(cleanURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}
@@ -99,22 +137,6 @@ func sendToGCP(data interface{}, url string) error {
 	}
 	return nil
 }
-
-// --- SRE GOLDEN SIGNALS: METRICS ---
-var (
-	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "retail_edge_latency_seconds",
-		Help:    "Latency of retail operations in seconds.",
-		Buckets: prometheus.DefBuckets,
-	}, []string{"path", "status"})
-
-	errorCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "retail_edge_errors_total",
-		Help: "Total number of failed retail operations.",
-	}, []string{"path", "error_type"})
-)
-
-var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 // --- MIDDLEWARE ---
 
@@ -251,12 +273,12 @@ func healthHandler(db *sql.DB) http.HandlerFunc {
 		if err := db.PingContext(ctx); err != nil {
 			// Ensure logger is defined or use fmt/log for now
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("❌ Service Unavailable"))
+			w.Write([]byte("Service Unavailable"))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("✅ OK"))
+		w.Write([]byte("OK"))
 	}
 }
 
@@ -273,17 +295,36 @@ func setupInitialMetrics() {
 		errorCounter.WithLabelValues(path, "none").Add(0)
 	}
 }
+func initializeSelfMetrics() {
+	//Read the namespace from environment variable, default to "local-dev" if not set
+	namespace := os.Getenv("K8S_NAMESPACE")
+	if namespace == "" {
+		namespace = "local-dev"
+	}
+
+	//Initialize the unsynced sales gauge for this namespace to 0 at startup
+	unsyncedSalesGauge.WithLabelValues(namespace).Set(0)
+
+	logger.Info("SRE-Metrics: Registered self in Prometheus", "namespace", namespace)
+}
 
 // --- MAIN ---
 
 func main() {
+	pwd, _ := os.Getwd()
+	logger.Info("SRE-Debug", "working_dir", pwd)
+
+	if _, err := os.Stat("web/index.html"); os.IsNotExist(err) {
+		logger.Error("Critical: index.html not found in ./web/")
+	}
+
 	connStr := os.Getenv("DB_DSN")
 	if connStr == "" {
 		log.Fatal("DB_DSN environment variable is not set")
 	}
 	var db *sql.DB
 	var err error
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		db, err = database.InitDB(connStr)
 		if err == nil {
 			if err = db.Ping(); err == nil {
@@ -295,7 +336,7 @@ func main() {
 	}
 
 	if err != nil {
-		logger.Error("❌ Critical: DB connection failed", "err", err)
+		logger.Error("Critical: DB connection failed", "err", err)
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -304,7 +345,7 @@ func main() {
 
 	// Step 1: Ensure the database schema (tables) exists
 	if err := database.CreateSchema(db); err != nil {
-		logger.Error("❌ Schema creation failed", "err", err)
+		logger.Error("Schema creation failed", "err", err)
 		os.Exit(1)
 	}
 
@@ -312,20 +353,30 @@ func main() {
 	// We use a warning instead of a fatal error so the server still starts
 	// even if the seed file is missing in the container.
 	if err := database.SeedDatabase(db, "inventory.json"); err != nil {
-		logger.Warn("⚠️ Seeding skipped or failed", "reason", err.Error())
+		logger.Warn("Seeding skipped or failed", "reason", err.Error())
 	} else {
-		logger.Info("✅ Database master data synchronized")
-	}
-
-	if err := database.SeedDatabase(db, "inventory.json"); err != nil {
-		logger.Warn("Database seeding skipped", "reason", err.Error())
-	} else {
-		logger.Info("Database master data ready")
+		logger.Info("Database master data synchronized")
 	}
 
 	// START SYNC WORKER: Decouple edge sales from cloud persistence
 	backboneURL := os.Getenv("GCP_BACKBONE_URL")
-	StartSyncWorker(db, backboneURL)
+	if backboneURL == "" {
+		logger.Warn("Backbone URL is missing, falling back to unknown")
+		backboneURL = "unknown-url"
+	}
+
+	// Fetch the Edge Node ID from the environment, provide fallback
+	edgeNodeID := os.Getenv("EDGE_NODE_ID")
+	if edgeNodeID == "" {
+		logger.Warn("EDGE_NODE_ID is missing, falling back to unknown")
+		edgeNodeID = "unknown-edge-node"
+	}
+
+	// Initialize self-metrics before starting the worker to ensure the namespace label is set
+	initializeSelfMetrics()
+
+	// Pass the ID and URL to the worker
+	StartSyncWorker(db, backboneURL, edgeNodeID)
 
 	setupInitialMetrics()
 
@@ -334,9 +385,33 @@ func main() {
 	mux.HandleFunc("/product", metricsMiddleware(handleGetProduct(db)))
 	mux.HandleFunc("/checkout", metricsMiddleware(handleCheckout(db))) // NEW: Checkout Route
 	mux.HandleFunc("/restock", metricsMiddleware(handleRestock(db)))
-	mux.HandleFunc("/health", healthHandler(db))
+	mux.HandleFunc("/healthz", healthHandler(db))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
+
+	//This endpoint simulates a CPU stress test by performing meaningless calculations for 5 seconds. It can be used to test how the system behaves under high CPU load and to validate the effectiveness of monitoring and alerting based on CPU usage.
+	mux.HandleFunc("/debug/stress-cpu", func(w http.ResponseWriter, r *http.Request) {
+		// Berechnet für 5 Sekunden sinnlose Primzahlen, um CPU zu fressen
+		done := time.After(5 * time.Second)
+		for {
+			select {
+			case <-done:
+				w.Write([]byte("CPU Stress finished"))
+				return
+			default:
+				_ = 1234567 * 7654321
+			}
+		}
+	})
+
+	//This endpoint simulates a memory leak by allocating 50MB of RAM and keeping it in memory. Each call to this endpoint will increase the memory usage of the server, which can be useful for testing how the system behaves under memory pressure.
+	var leak [][]byte
+	mux.HandleFunc("/debug/stress-mem", func(w http.ResponseWriter, r *http.Request) {
+		// Reserviert ca. 50MB RAM und behält sie im Speicher
+		s := make([]byte, 50*1024*1024)
+		leak = append(leak, s)
+		w.Write([]byte("Allocated 50MB of Heap"))
+	})
 
 	// 3. Server Configuration (TLS)
 	certFile := os.Getenv("CERT_PATH")
@@ -348,37 +423,23 @@ func main() {
 	}
 
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
-		logger.Error("❌ Critical: TLS certificates missing", "path", certFile)
-		os.Exit(1)
+		logger.Error("Critical: TLS certificates missing", "path", certFile)
 	}
-
 	server := &http.Server{
-		Addr:    ":443",
 		Handler: mux,
 	}
 
-	// 4. Graceful Shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		if _, err := os.Stat(certFile); os.IsNotExist(err) {
-			logger.Warn("⚠️ TLS Certs missing, falling back to HTTP on :8080")
-			server.Addr = ":8080" // Override port for non-TLS
-			logger.Info("Retail Edge Node starting (Insecure)", "addr", server.Addr)
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				logger.Error("Server crash", "err", err)
-				os.Exit(1)
-			}
-		} else {
-			logger.Info("🔐 Secure Retail Edge Node starting", "addr", server.Addr)
-			if err := server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-				logger.Error("Server crash", "err", err)
-				os.Exit(1)
-			}
+		// Ändere diesen Teil so, dass er standardmäßig auf 8080 lauscht
+		logger.Info("Starting Retail Edge Node (Insecure/Local Mode)", "port", "8080")
+		server.Addr = ":8080"
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP Server crash", "err", err)
 		}
 	}()
-
 	<-stop
 	logger.Info("Graceful shutdown initiated...")
 
@@ -389,5 +450,5 @@ func main() {
 		logger.Error("Forced shutdown", "err", err)
 	}
 
-	logger.Info("👋 Retail Edge Node stopped.")
+	logger.Info("Retail Edge Node stopped.")
 }

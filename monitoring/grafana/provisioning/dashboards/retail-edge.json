@@ -1,0 +1,87 @@
+{
+  "title": "Retail Edge - 4 Golden Signals",
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "definition": "label_values(go_memstats_heap_inuse_bytes, namespace)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Sync Lag (GCP Backbone)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(retail_edge_unsynced_sales_count{namespace=~\"$namespace\"}) or vector(0)" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 10, "color": "orange" },
+              { "value": 50, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Traffic (Requests/sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "sum by (namespace) (rate(retail_edge_latency_seconds_count{namespace=~\"$namespace\"}[1m]))", "legendFormat": "{{namespace}}" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "title": "Errors (Total)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "sum by (namespace) (increase(retail_edge_errors_total{namespace=~\"$namespace\"}[1m]))", "legendFormat": "Errors {{namespace}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" } } }
+    },
+    {
+      "title": "Latency (P95 in ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, namespace) (rate(retail_edge_latency_seconds_bucket{namespace=~\"$namespace\"}[5m]))) * 1000", "legendFormat": "{{namespace}}" }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "title": "Saturation (CPU Usage %)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "sum by (namespace) (rate(process_cpu_seconds_total{namespace=~\"$namespace\"}[1m])) * 100", "legendFormat": "CPU {{namespace}}" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } }
+    },
+    {
+      "title": "Saturation (Heap Memory)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        { 
+          "expr": "sum by (namespace) (go_memstats_heap_inuse_bytes{namespace=~\"$namespace\"})", 
+          "legendFormat": "Memory {{namespace}}" 
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        }
+      }
+    }
+  ]
+}

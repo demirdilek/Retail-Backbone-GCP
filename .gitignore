@@ -15,23 +15,24 @@ vendor/
 *.test
 *.out
 coverage.txt
-go.sum
+# go.sum sollte EINGECHECKT werden für reproduzierbare Builds
 
 # --- Secrets, Certificates & Credentials (CRITICAL) ---
-# We block all keys, certs and json to prevent accidental leaks
 *.key
 *.pem
 *.crt
 *.p12
 *.json
-# Exceptions: Allow essential config files but NOT secrets
+
+# Exceptions: Notwendige Konfigurationen erlauben
 !app.yaml
 !inventory.json
 !package.json
 !docker-compose.yml
+# Wichtig für dein Monitoring-Target:
+!monitoring/grafana/provisioning/dashboards/*.json
 
 # --- Docker & Databases ---
-# Prevents local DB data from being pushed
 postgres_data/
 grafana-storage/
 prometheus_data/
@@ -40,12 +41,14 @@ prometheus_data/
 
 # --- Infrastructure & Environment ---
 .env
-.env.*
 .terraform/
 *.tfstate
 *.tfstate.backup
 *.tfvars
 .terraform.lock.hcl
+# K3d / Local Cluster Configs
+.kubeconfig
+*.kubeconfig
 
 # --- IDE & OS ---
 .vscode/
@@ -56,9 +59,7 @@ Thumbs.db
 *~
 
 # --- Retail Edge Specifics ---
-# If you store logs locally during development
 *.log
-
+tailscale_state/
 .vagrant/
-vendor/
-*.log
+nohup.out

@@ -1,0 +1,21 @@
+# k8s/routes.yaml
+# HTTPRoute template for routing traffic to the correct store namespace
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: store-STORE_NAME
+spec:
+  parentRefs:
+    - name: retail-gateway
+      namespace: default
+  # STORE_NAME will be replaced by the Makefile using sed
+  hostnames:
+    - "STORE_NAME.localhost"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: retail-edge-service
+          port: 443

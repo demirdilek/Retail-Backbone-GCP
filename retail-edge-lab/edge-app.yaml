@@ -6,11 +6,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: edge-service 
+      app: retail-edge-app 
   template:
     metadata:
       labels:
-        app: edge-service
+        app: retail-edge-app
     spec:
       # Use the secret we created with the ACCESS_TOKEN
       initContainers:
@@ -20,7 +20,7 @@ spec:
       imagePullSecrets:
         - name: google-registry-key 
       containers:
-        - name: edge-service
+        - name: retail-edge-app
           image: europe-west3-docker.pkg.dev/retail-backbone-gcp/retail-edge-repo/retail-edge-service:latest
           imagePullPolicy: Always
           env:

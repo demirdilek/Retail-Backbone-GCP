@@ -1,0 +1,68 @@
+# k8s/app.yaml
+# Deployment manifest for the Retail Edge Backbone node
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: retail-edge
+  template:
+    metadata:
+      labels:
+        app: retail-edge
+      annotations:
+        # SRE-Discovery: Instruct Prometheus to scrape metrics from this pod
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+      - name: retail-edge
+        image: retail-edge:latest
+        imagePullPolicy: Never # Uses local image from k3d/docker
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 443
+          name: https
+        # SRE-Safety: Define resource boundaries to prevent noisy neighbor issues
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        env:
+        # DB_DSN: Connection string for the local edge database
+        - name: DB_DSN
+          value: "host=db-service user=postgres password=retail-edge-pw dbname=retail_edge sslmode=disable"
+        # GCP_BACKBONE_URL: Target for the cloud synchronization worker
+        - name: GCP_BACKBONE_URL
+          value: "https://api.backbone.retail-edge.com"
+        # EDGE_NODE_ID: Unique identifier for this specific physical store
+        - name: EDGE_NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # K8S_NAMESPACE: Used by Go metrics to label data by store/location
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+---
+# Service to expose the Retail Edge Node within the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: retail-edge
+spec:
+  selector:
+    app: retail-edge
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

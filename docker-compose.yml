@@ -1,68 +1,80 @@
-version: '3.8'
+# ==============================================================================
+# Retail Edge - Local Recruiter Demo Environment (HTTPS + SRE Stack)
+# ==============================================================================
 
 services:
-  # Your Go Scanner Service (Retail Edge)
-  scanner-service:
-    build: .
-    ports:
-      - "8443:443"
-    environment:
-      - DATABASE_URL=postgres://retail_user:retail_password@db:5432/retail_backbone?sslmode=disable
-      # MATCH THESE TO THE VOLUME TARGETS BELOW
-      - CERT_PATH=/app/cert.crt
-      - KEY_PATH=/app/cert.key
-    depends_on:
-      db:
-        condition: service_healthy # Wait for DB to be fully ready
-    volumes:
-      - ./.web:/app/.web
-      # Mount Tailscale certs from host to /app/ in container
-      - ./retail-server.tailb0ad6a.ts.net.crt:/app/cert.crt:ro
-      - ./retail-server.tailb0ad6a.ts.net.key:/app/cert.key:ro
-      - ./inventory.json:/app/inventory.json:ro
-
-  # PostgreSQL Database
+  # PostgreSQL Database for Edge Sales Data
   db:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: retail_user
       POSTGRES_PASSWORD: retail_password
-      POSTGRES_DB: retail_backbone
+      POSTGRES_DB: retail_edge
     ports:
       - "5432:5432"
-    healthcheck: # SRE Best Practice: Ensure DB is ready before backend starts
-      test: ["CMD-SHELL", "pg_isready -U retail_user -d retail_backbone"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retail_user -d retail_edge"]
       interval: 5s
       timeout: 5s
       retries: 5
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
 
-  # Prometheus (The Collector for your Golden Signals)
+  # Main Retail Edge Application
+  retail-edge-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8443:443"  # Maps HTTPS to 8443 on your local machine
+      - "8080:8080" # Maps HTTP fallback
+    environment:
+      # Database and Edge logic
+      - DB_DSN=postgres://retail_user:retail_password@db:5432/retail_edge?sslmode=disable
+      - GCP_BACKBONE_URL=
+      - EDGE_NODE_ID=local-demo-node
+      # TLS Configuration
+      - CERT_PATH=/root/certs/cert.crt
+      - KEY_PATH=/root/certs/cert.key
+    volumes:
+      - ./certs:/root/certs:ro
+      - ./web:/root/web:ro
+      - ./retail-edge-lab/inventory.json:/root/inventory.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Prometheus for monitoring
   prometheus:
     image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    container_name: prometheus
     ports:
       - "9090:9090"
-  
-  # Grafana (The Visualization for your Golden Signals)
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: unless-stopped
+
+  # Grafana for visualization
   grafana:
     image: grafana/grafana:latest
     ports:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_SERVER_PROTOCOL=https
-      - GF_SERVER_ROOT_URL=https://retail-server.tailb0ad6a.ts.net:3000
-      - GF_SERVER_DOMAIN=retail-server.tailb0ad6a.ts.net
-      - GF_SERVER_CERT_FILE=/etc/grafana/cert.crt
-      - GF_SERVER_CERT_KEY=/etc/grafana/cert.key
-    volumes:
-      - ./retail-server.tailb0ad6a.ts.net.crt:/etc/grafana/cert.crt:ro
-      - ./retail-server.tailb0ad6a.ts.net.key:/etc/grafana/cert.key:ro
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Enable anonymous access for simplicity
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     depends_on:
       - prometheus
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
 
 volumes:
-  postgres_data:
+  pgdata:
+  prometheus_data:
+  grafanadata:

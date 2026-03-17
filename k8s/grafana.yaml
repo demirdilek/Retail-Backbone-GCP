@@ -1,0 +1,98 @@
+# k8s/grafana.yaml
+# Automated datasource and dashboard provisioning for Grafana
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+#  namespace: default
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus:9090
+      access: proxy
+      isDefault: true
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'Retail Edge'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      options:
+        path: /var/lib/grafana/dashboards
+---
+# Grafana Deployment with resource boundaries and dashboard mounts
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+#  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        env:
+        - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+          value: "/var/lib/grafana/dashboards/retail-edge.json"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: "Admin"  # Enabele Admin rights for anonymous users to allow dashboard provisioning without login
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "false" # Deactivate basic auth to simplify local access in this demo setup
+        ports:
+        - containerPort: 3000
+        # Define CPU and RAM limits
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        # Mount datasources config
+        - name: grafana-config
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+          subPath: datasources.yaml
+        # Mount dashboards provisioning config
+        - name: grafana-config
+          mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+          subPath: dashboards.yaml
+        # Mount the actual dashboard JSON files
+        - name: dashboard-volume
+          mountPath: /var/lib/grafana/dashboards
+      volumes:
+      - name: grafana-config
+        configMap:
+          name: grafana-config
+      - name: dashboard-volume
+        configMap:
+          name: retail-edge-dashboard
+---
+# Expose Grafana externally via k3d LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+#  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
