@@ -1,17 +1,26 @@
 {
   "title": "Retail Edge - 4 Golden Signals",
   "refresh": "5s",
+  "schemaVersion": 36,
   "templating": {
     "list": [
       {
         "name": "namespace",
         "type": "query",
-        "datasource": "Prometheus",
-        "definition": "label_values(go_memstats_heap_inuse_bytes, namespace)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "retail-edge-prom" 
+        },
+        "definition": "label_values(up, kubernetes_namespace)",
+        "query": {
+          "query": "label_values(up, kubernetes_namespace)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
-        "refresh": 1
+        "sort": 1
       }
     ]
   },
@@ -20,7 +29,7 @@
       "title": "Sync Lag (GCP Backbone)",
       "type": "stat",
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
-      "targets": [{ "expr": "sum(retail_edge_unsynced_sales_count{namespace=~\"$namespace\"}) or vector(0)" }],
+      "targets": [{ "expr": "sum(retail_edge_unsynced_sales_count{kubernetes_namespace=~\"$namespace\"}) or vector(0)" }],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -39,28 +48,40 @@
       "title": "Traffic (Requests/sec)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "targets": [{ "expr": "sum by (namespace) (rate(retail_edge_latency_seconds_count{namespace=~\"$namespace\"}[1m]))", "legendFormat": "{{namespace}}" }],
+      "targets": [{ 
+        "expr": "sum by (kubernetes_namespace) (rate(retail_edge_latency_seconds_count{kubernetes_namespace=~\"$namespace\"}[1m]))", 
+        "legendFormat": "{{kubernetes_namespace}}" 
+      }],
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     },
     {
       "title": "Errors (Total)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "targets": [{ "expr": "sum by (namespace) (increase(retail_edge_errors_total{namespace=~\"$namespace\"}[1m]))", "legendFormat": "Errors {{namespace}}" }],
+      "targets": [{ 
+        "expr": "sum by (kubernetes_namespace) (increase(retail_edge_errors_total{kubernetes_namespace=~\"$namespace\"}[1m]))", 
+        "legendFormat": "Errors {{kubernetes_namespace}}" 
+      }],
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" } } }
     },
     {
       "title": "Latency (P95 in ms)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, namespace) (rate(retail_edge_latency_seconds_bucket{namespace=~\"$namespace\"}[5m]))) * 1000", "legendFormat": "{{namespace}}" }],
+      "targets": [{ 
+        "expr": "histogram_quantile(0.95, sum by (le, kubernetes_namespace) (rate(retail_edge_latency_seconds_bucket{kubernetes_namespace=~\"$namespace\"}[5m]))) * 1000", 
+        "legendFormat": "{{kubernetes_namespace}}" 
+      }],
       "fieldConfig": { "defaults": { "unit": "ms" } }
     },
     {
       "title": "Saturation (CPU Usage %)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "targets": [{ "expr": "sum by (namespace) (rate(process_cpu_seconds_total{namespace=~\"$namespace\"}[1m])) * 100", "legendFormat": "CPU {{namespace}}" }],
+      "targets": [{ 
+        "expr": "sum by (kubernetes_namespace) (rate(process_cpu_seconds_total{kubernetes_namespace=~\"$namespace\"}[1m])) * 100", 
+        "legendFormat": "CPU {{kubernetes_namespace}}" 
+      }],
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 } }
     },
     {
@@ -69,8 +90,8 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
       "targets": [
         { 
-          "expr": "sum by (namespace) (go_memstats_heap_inuse_bytes{namespace=~\"$namespace\"})", 
-          "legendFormat": "Memory {{namespace}}" 
+          "expr": "sum by (kubernetes_namespace) (go_memstats_heap_inuse_bytes{kubernetes_namespace=~\"$namespace\"})", 
+          "legendFormat": "Memory {{kubernetes_namespace}}" 
         }
       ],
       "fieldConfig": {

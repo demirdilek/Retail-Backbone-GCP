@@ -6,8 +6,9 @@
 # Configuration variables
 CLUSTER_NAME = retail-cluster
 STORES = store-betzdorf store-remagen store-koeln
+OS = $(shell uname)
 
-.PHONY: demo cluster-up mesh-up deploy-stores clean deploy-monitoring status help warmup tunnels open-stores
+.PHONY: demo cluster-up mesh-up deploy-stores clean deploy-monitoring status help warmup tunnels open-stores grafana-ui
 
 # --- Documentation ---
 
@@ -19,8 +20,13 @@ help:
 	@echo "make mesh-up           - Install Linkerd service mesh"
 	@echo "make deploy-stores     - Deploy stores and wait for readiness"
 	@echo "make deploy-monitoring - Deploy observability stack"
-	@echo "make status            - Check Golden Signals"
-	@echo "make clean             - Full teardown"
+	@echo "make status            - Check Golden Signals (up metrics)"
+	@echo "make tunnels           - Establish port-forwards for all services"
+	@echo "make open-stores       - Open all store UIs in the browser"
+	@echo "make grafana-ui        - Open Grafana dashboard"
+	@echo "make clean             - Full teardown and port cleanup"
+
+# --- Main Workflows ---
 
 # --- Main Workflows ---
 
@@ -32,18 +38,23 @@ demo:
 	$(MAKE) deploy-monitoring; \
 	$(MAKE) tunnels; \
 	echo "SRE Check: Validating tunnel stability..."; \
-	for i in $$(seq 1 10); do \
-		if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/8081' 2>/dev/null; then \
-			echo "Tunnels established and verified."; \
+	for i in $$(seq 1 15); do \
+		if nc -z 127.0.0.1 9090 && nc -z 127.0.0.1 3000; then \
+			echo "✅ Tunnels established and verified."; \
 			break; \
 		fi; \
-		if [ $$i -eq 10 ]; then echo "Tunnels failed to stabilize"; exit 1; fi; \
-		echo "Waiting for connectivity ($$i/10)..."; \
-		sleep 1; \
+		if [ $$i -eq 15 ]; then \
+			echo "❌ Tunnels failed. Logs:"; \
+			tail -n 5 prometheus.log; \
+			exit 1; \
+		fi; \
+		echo "Waiting for ports 9090 & 3000 ($$i/15)..."; \
+		sleep 2; \
 	done; \
 	$(MAKE) warmup; \
 	$(MAKE) open-stores; \
-	echo "Setup complete. Starting Linkerd dashboard on Port 5050..."; \
+	$(MAKE) grafana-ui; \
+	echo "Setup complete. Starting Linkerd dashboard..."; \
 	linkerd viz dashboard --port 5050 & \
 	duration=$$(( $$(date +%s) - start_time )); \
 	echo "------------------------------------------------"; \
@@ -51,13 +62,15 @@ demo:
 	echo "------------------------------------------------"
 
 warmup:
-	@echo "SRE Operations: Warming up store caches..."
+	@echo "SRE Operations: Warming up store caches in parallel..."
 	@port=8081; \
 	for store in $(STORES); do \
 		echo "Hitting $$store on port $$port..."; \
-		curl -s "http://localhost:$$port/product?ean=4012345678901" > /dev/null || true; \
+		curl -s "http://localhost:$$port/product?ean=4012345678901" > /dev/null 2>&1 & \
 		port=$$((port + 1)); \
-	done
+	done; \
+	wait; \
+	echo "✅ All stores warmed up."
 
 # --- Infrastructure Components ---
 
@@ -103,23 +116,35 @@ deploy-monitoring:
 	@kubectl apply -f k8s/prometheus.yaml -n monitoring
 	@kubectl apply -f k8s/grafana.yaml -n monitoring
 	@echo "Waiting for Observability Readiness..."
-	@kubectl wait --for=condition=available deployment/prometheus -n monitoring --timeout=60s
-	@kubectl wait --for=condition=available deployment/grafana -n monitoring --timeout=60s
+	@kubectl wait --for=condition=available deployment/prometheus -n monitoring --timeout=120s
+	@kubectl wait --for=condition=available deployment/grafana -n monitoring --timeout=120s
 	@-pkill -f "port-forward svc/grafana" > /dev/null 2>&1 || true
-	@nohup kubectl port-forward svc/grafana 3000:3000 -n monitoring > /dev/null 2>&1 &
+
+grafana-ui:
+	@echo "Opening Grafana for Retail Edge..."
+	@if [ "$(OS)" = "Darwin" ]; then \
+		open http://localhost:3000; \
+	elif [ "$(OS)" = "Linux" ]; then \
+		xdg-open http://localhost:3000; \
+	else \
+		echo "Platform not supported for automatic opening"; \
+	fi
 
 tunnels:
-	@echo "SRE Operations: Resetting and opening store tunnels..."
-	@-pkill -f "port-forward" > /dev/null 2>&1 || true
+	@echo "SRE Operations: Resetting tunnels..."
+	@-pkill -9 -f "port-forward" > /dev/null 2>&1 || true
 	@sleep 1
+	@echo "Starting Monitoring Tunnels (Prometheus & Grafana)..."
+	@# Use 127.0.0.1 to force IPv4 and match our check
+	@nohup kubectl port-forward svc/prometheus 9090:9090 -n monitoring --address 127.0.0.1 > prometheus.log 2>&1 &
+	@nohup kubectl port-forward svc/grafana 3000:3000 -n monitoring --address 127.0.0.1 > grafana.log 2>&1 &
 	@port=8081; \
 	for store in $(STORES); do \
-		echo "Mapping $$store -> port $$port"; \
-		nohup kubectl port-forward svc/retail-edge -n $$store $$port:8080 >/dev/null 2>&1 & \
+		echo "Starting $$store tunnel on $$port..."; \
+		nohup kubectl port-forward svc/retail-edge -n $$store $$port:8080 --address 127.0.0.1 > $${store}.log 2>&1 & \
 		port=$$((port + 1)); \
 	done; \
-	nohup kubectl port-forward svc/grafana 3000:3000 -n monitoring >/dev/null 2>&1 & \
-	echo "Tunnels initiated in background."
+	sleep 2
 
 open-stores:
 	@echo "SRE Operations: Launching all interfaces..."
@@ -136,6 +161,27 @@ open-stores:
 	done
 
 clean:
-	@echo "SRE Cleanup: Purging environment..."
-	@-pkill -f "port-forward" > /dev/null 2>&1 || true
+	@echo "SRE Operations: Purging environment and releasing resources..."
+	@# 1. Terminate all active port-forward processes
+	@-pkill -9 -f "port-forward" > /dev/null 2>&1 || true
+	@# 2. Deep clean specific infrastructure ports
+	@for port in 3000 9090; do \
+		pid=$$(lsof -t -i:$$port); \
+		if [ -n "$$pid" ]; then kill -9 $$pid 2>/dev/null || true; fi; \
+	done
+	@# 3. Dynamically clean store ports based on $(STORES) variable
+	@port=8081; \
+	for store in $(STORES); do \
+		pid=$$(lsof -t -i:$$port); \
+		if [ -n "$$pid" ]; then \
+			echo "Releasing port $$port for $$store..."; \
+			kill -9 $$pid 2>/dev/null || true; \
+		fi; \
+		port=$$((port + 1)); \
+	done
+	@# 4. Destroy the k3d cluster and remove logs
 	@k3d cluster delete $(CLUSTER_NAME)
+	@rm -f *.log
+	@echo "------------------------------------------------"
+	@echo "✅ CLEANUP COMPLETE: All resources purged"
+	@echo "------------------------------------------------"

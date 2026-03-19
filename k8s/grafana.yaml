@@ -1,19 +1,18 @@
-# k8s/grafana.yaml
-# Automated datasource and dashboard provisioning for Grafana
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-config
-#  namespace: default
+  namespace: monitoring # Einheitlich mit Prometheus
 data:
   datasources.yaml: |
     apiVersion: 1
     datasources:
     - name: Prometheus
       type: prometheus
-      url: http://prometheus:9090
+      url: http://prometheus:9090 # Funktioniert jetzt, da im gleichen Namespace
       access: proxy
       isDefault: true
+      uid: retail-edge-prom # Wichtig für dein Dashboard JSON
   dashboards.yaml: |
     apiVersion: 1
     providers:
@@ -25,12 +24,11 @@ data:
       options:
         path: /var/lib/grafana/dashboards
 ---
-# Grafana Deployment with resource boundaries and dashboard mounts
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-#  namespace: default
+  namespace: monitoring
 spec:
   replicas: 1
   selector:
@@ -50,12 +48,11 @@ spec:
         - name: GF_AUTH_ANONYMOUS_ENABLED
           value: "true"
         - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-          value: "Admin"  # Enabele Admin rights for anonymous users to allow dashboard provisioning without login
+          value: "Admin"
         - name: GF_AUTH_BASIC_ENABLED
-          value: "false" # Deactivate basic auth to simplify local access in this demo setup
+          value: "false"
         ports:
         - containerPort: 3000
-        # Define CPU and RAM limits
         resources:
           requests:
             memory: "128Mi"
@@ -64,15 +61,12 @@ spec:
             memory: "256Mi"
             cpu: "200m"
         volumeMounts:
-        # Mount datasources config
         - name: grafana-config
           mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
           subPath: datasources.yaml
-        # Mount dashboards provisioning config
         - name: grafana-config
           mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
           subPath: dashboards.yaml
-        # Mount the actual dashboard JSON files
         - name: dashboard-volume
           mountPath: /var/lib/grafana/dashboards
       volumes:
@@ -83,12 +77,11 @@ spec:
         configMap:
           name: retail-edge-dashboard
 ---
-# Expose Grafana externally via k3d LoadBalancer
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana
-#  namespace: default
+  namespace: monitoring
 spec:
   type: LoadBalancer
   selector:
