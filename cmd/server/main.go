@@ -50,71 +50,74 @@ func StartSyncWorker(db *sql.DB, backboneURL string, edgeNodeID string) {
 		logger.Warn("SRE-Sync: No GCP_BACKBONE_URL provided. Background sync is disabled.")
 		return
 	}
+
 	namespace := os.Getenv("K8S_NAMESPACE")
 	if namespace == "" {
 		namespace = "unknown"
 	}
+
 	// Ticker defines the synchronization interval (Golden Signal: Freshness)
 	ticker := time.NewTicker(30 * time.Second)
+
 	go func() {
 		logger.Info("SRE-Sync: background worker started", "target", backboneURL)
 		for range ticker.C {
-			var count float64
-			err := db.QueryRow("SELECT COUNT(*) FROM sales WHERE synced_at IS NULL").Scan(&count)
-			if err == nil {
-				// Hier das Label setzen!
-				unsyncedSalesGauge.WithLabelValues(namespace).Set(count)
-			}
+			// anonymous function to ensure 'defer' triggers at the end of each tick
+			func() {
+				// Final count update at the end of the tick for better performance
+				defer func() {
+					var finalCount float64
+					if err := db.QueryRow("SELECT COUNT(*) FROM sales WHERE synced_at IS NULL").Scan(&finalCount); err == nil {
+						unsyncedSalesGauge.WithLabelValues(namespace).Set(finalCount)
+					}
+				}()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			// Retrieve sales records that haven't been synced yet
-			rows, err := db.QueryContext(ctx, `
-                SELECT id, transaction_id, ean, quantity, sold_price 
-                FROM sales 
-                WHERE synced_at IS NULL 
-                LIMIT 10`)
-			cancel()
-			if err != nil {
-				logger.Error("SRE-Sync: database query failed", "error", err)
-				continue
-			}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 
-			for rows.Next() {
-				var id int
-				var txID, ean string
-				var qty int
-				var price float64
-
-				if err := rows.Scan(&id, &txID, &ean, &qty, &price); err != nil {
-					continue
+				// Retrieve unsynced sales records
+				rows, err := db.QueryContext(ctx, `
+                    SELECT id, transaction_id, ean, quantity, sold_price 
+                    FROM sales 
+                    WHERE synced_at IS NULL 
+                    LIMIT 10`)
+				if err != nil {
+					logger.Error("SRE-Sync: database query failed", "error", err)
+					return // ends current tick function
 				}
+				defer rows.Close()
 
-				// Prepare the payload for the Cloud Backbone
-				payload := map[string]interface{}{
-					"transaction_id": txID,
-					"ean":            ean,
-					"quantity":       qty,
-					"price":          price,
-					"edge_node":      edgeNodeID,
-				}
+				for rows.Next() {
+					var id int
+					var txID, ean string
+					var qty int
+					var price float64
 
-				// Attempt to send data to GCP via Tailscale/Cloud connection
-				if err := sendToGCP(payload, backboneURL); err != nil {
-					logger.Warn("SRE-Sync: GCP Backbone unreachable", "error", err)
-					break // Stop current cycle to implement a simple backoff
-				}
+					if err := rows.Scan(&id, &txID, &ean, &qty, &price); err != nil {
+						continue
+					}
 
-				// Success: Update the local record with a sync timestamp
-				_, err = db.Exec("UPDATE sales SET synced_at = NOW() WHERE id = $1", id)
-				if err == nil {
-					logger.Info("SRE-Sync: transaction reconciled", "tx_id", txID)
+					payload := map[string]interface{}{
+						"transaction_id": txID,
+						"ean":            ean,
+						"quantity":       qty,
+						"price":          price,
+						"edge_node":      edgeNodeID,
+					}
+
+					// Attempt to send data to GCP Backbone
+					if err := sendToGCP(payload, backboneURL); err != nil {
+						logger.Warn("SRE-Sync: GCP Backbone unreachable", "error", err)
+						break // exit the row-processing for this tick (simple backoff)
+					}
+
+					// Reconcile local record
+					_, err = db.Exec("UPDATE sales SET synced_at = NOW() WHERE id = $1", id)
+					if err == nil {
+						logger.Info("SRE-Sync: transaction reconciled", "tx_id", txID)
+					}
 				}
-				//Short request to update the unsynced sales gauge after each sync attempt
-				var count float64
-				db.QueryRow("SELECT COUNT(*) FROM sales WHERE synced_at IS NULL").Scan(&count)
-				unsyncedSalesGauge.WithLabelValues(namespace).Set(count)
-			}
-			rows.Close()
+			}()
 		}
 	}()
 }
@@ -352,7 +355,7 @@ func main() {
 	// Step 2: Seed master data from inventory.json
 	// We use a warning instead of a fatal error so the server still starts
 	// even if the seed file is missing in the container.
-	if err := database.SeedDatabase(db, "inventory.json"); err != nil {
+	if err := database.SeedDatabase(db, "/data/inventory.json"); err != nil {
 		logger.Warn("Seeding skipped or failed", "reason", err.Error())
 	} else {
 		logger.Info("Database master data synchronized")
@@ -433,13 +436,18 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		// Ändere diesen Teil so, dass er standardmäßig auf 8080 lauscht
-		logger.Info("Starting Retail Edge Node (Insecure/Local Mode)", "port", "8080")
+		logger.Info("SRE-Operations: SyncWorker online",
+			"node_id", edgeNodeID,
+			"port", "8080",
+			"mode", "insecure/local",
+		)
+
 		server.Addr = ":8080"
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP Server crash", "err", err)
 		}
 	}()
+
 	<-stop
 	logger.Info("Graceful shutdown initiated...")
 
