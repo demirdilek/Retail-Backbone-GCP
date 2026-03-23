@@ -2,24 +2,30 @@
 FROM golang:1.25-alpine AS builder
 RUN apk add --no-cache git ca-certificates
 WORKDIR /app
+
+# 1. Abhängigkeiten laden (Optimiertes Caching)
 COPY go.mod go.sum ./
 RUN go mod download
+
+# 2. EXPLIZIT: Daten-Ordner kopieren, damit er im Builder existiert
+COPY data/ ./data/
+
+# 3. Restlichen Code kopieren
 COPY . .
 
-# Build with the name defined in your Makefile
+# 4. Binary bauen
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o bin/retail-syncworker ./cmd/server/main.go
 
-# --- Stage 2: Final ---
+# --- Stage 2: Final (Distroless) ---
 FROM gcr.io/distroless/static-debian12:latest
 WORKDIR /app
 
-# Copy binary from the specific 'bin' folder created in Stage 1
+# 5. Binary und Daten aus dem Builder in das finale Image übertragen
 COPY --from=builder /app/bin/retail-syncworker ./retail-syncworker
-
-# Copy your data and web assets
-# Note: Ensure these directories exist in your repo root!
 COPY --from=builder /app/data ./data
-COPY --from=builder /app/web ./web
+
+# Falls du keinen 'web' Ordner hast, lösche diese Zeile unbedingt!
+# COPY --from=builder /app/web ./web
 
 USER nonroot:nonroot
 EXPOSE 8080
