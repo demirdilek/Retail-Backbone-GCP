@@ -4,58 +4,53 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+
 env:
   PROJECT_ID: retail-backbone-gcp
   REGION: europe-west3
   REPOSITORY: retail-edge-repo
   IMAGE: retail-edge-service
-  CLUSTER_NAME: retail-edge-cluster
-  CLUSTER_ZONE: europe-west3-b
 
-#permissions to allow OIDC token generation
 permissions:
   contents: 'read'
   id-token: 'write'
   
 jobs:
   deploy:
-    name: Build and Push to Artifact Registry
+    name: Build and Push Multi-Arch Container
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
+      # Setup for Multi-Platform Builds (AMD64 & ARM64)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    # Authenticate with Google Cloud using OIDC
-    - name: Google Auth
-      uses: 'google-github-actions/auth@v2'
-      with:
-        # Match the name from the gcloud command above
-        workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider-final'
-        service_account: 'github-action-sa@retail-backbone-gcp.iam.gserviceaccount.com'
-        project_id: 'retail-backbone-gcp'
-        token_format: 'access_token'
+      - name: Google Auth (OIDC)
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider-final'
+          service_account: 'github-action-sa@retail-backbone-gcp.iam.gserviceaccount.com'
+          project_id: 'retail-backbone-gcp'
+          token_format: 'access_token'
 
-    # Configure Docker to use the gcloud command-line tool as a credential helper
-    - name: Docker Auth
-      run: |
-        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      - name: Docker Auth
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-    # Build the Docker image and push it to Artifact Registry
-    - name: Build and Push Container
-      run: |
-        REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
-        
-        # Build with both tags
-        docker build \
-          -t $REPO_PATH:${{ github.sha }} \
-          -t $REPO_PATH:latest .
-        
-        # Push both
-        docker push $REPO_PATH:${{ github.sha }}
-        docker push $REPO_PATH:latest
+      - name: Build and Push
+        run: |
+          REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
+          
+          # Build for Cloud (amd64) and Edge-Hardware (arm64)
+          # Use Docker-Caching for faster builds
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            -t $REPO_PATH:${{ github.sha }} \
+            -t $REPO_PATH:latest .

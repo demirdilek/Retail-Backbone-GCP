@@ -1,1 +1,0 @@
-{"rsync":{"/vagrant":{"disabled":false,"guestpath":"/vagrant","hostpath":"/home/hueseyin/src/Retail-Backbone-GCP/retail-edge-lab","type":"rsync","__vagrantfile":true,"owner":"vagrant","group":"vagrant"}}}

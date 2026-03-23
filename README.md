@@ -1,98 +1,53 @@
-# Retail Edge Backbone
-
-This project demonstrates a modern, hybrid Cloud-Edge architecture for the retail industry. It focuses on local autonomy (Edge) and central data aggregation (GCP Backbone).
+# Retail Edge Backbone (GCP & Tailscale)
 
 ![Go Quality Check](https://github.com/demirdilek/Retail-Backbone-GCP/actions/workflows/go.yml/badge.svg)
 ![Deployment Status](https://github.com/demirdilek/Retail-Backbone-GCP/actions/workflows/deploy.yml/badge.svg)
 
+This project demonstrates a professional, hybrid Cloud-Edge architecture designed for the retail industry. It focuses on high-performance data synchronization, local store autonomy, and a **Zero Trust** security model.
+
+---
+
+## Core Pillars
+
+* **Cloud Backbone (GCP):** Centralized control plane and data aggregation using GKE and Artifact Registry.
+* **Retail Edge (Store):** Lightweight, autonomous nodes running **K3s** for local resilience and low-latency processing.
+* **Zero Trust Mesh:** Secure, identity-based communication via **Tailscale (WireGuard)**, eliminating public IP exposure.
+* **SRE Focused:** Built with the **4 Golden Signals** (Latency, Traffic, Errors, Saturation) in mind using Go-native instrumentation.
+
 ## Architecture Overview
 
-The system is split into two main domains:
+The system bridges the gap between decentralized retail locations and a centralized Google Cloud environment:
 
-1.  **Cloud Backbone (GCP):**
-    * **GKE Cluster:** Central control plane and data sink.
-    * **Artifact Registry:** Centralized Docker image management.
-    * **Terraform:** Infrastructure as Code (IaC) for reproducible environments.
+1.  **Infrastructure as Code:** Fully managed via **Terraform** for reproducible environments.
+2.  **Networking:** A private overlay mesh connects all nodes. Edge nodes join the network automatically using **OAuth2** authentication.
+3.  **Security:** Automated TLS (Let's Encrypt) for all internal services via Tailscale, enabling secure browser-native APIs (e.g., Camera/Scanner) in-store.
 
-2.  **Retail Edge (Store/Local):**
-    * **Go SyncWorker:** Captures local scans and handles reliable synchronization.
-    * **Docker Compose:** Local runtime environment (Postgres, Go-Service).
-    * **Tailscale:** Secure WireGuard-based networking between Edge and Cloud.
+## Architecture Decisions (ADR)
 
-## Prerequisites
+### ADR 001: Switching from GKE to k3s for Edge Nodes
+* **Context:** Local simulation of edge nodes using GKE resulted in ~80% CPU saturation on development hardware.
+* **Decision:** Replaced GKE with **k3s** for edge environments.
+* **Consequence:** Reduced resource footprint significantly while maintaining Kubernetes API compatibility, better mirroring actual retail hardware constraints.
 
-To manage this environment, you need the following tools installed:
+### ADR 002: Multi-Stage Distroless Builds
+* **Context:** Retail store connectivity can be unstable or bandwidth-limited.
+* **Decision:** Implemented multi-stage Docker builds using `gcr.io/distroless/static`.
+* **Consequence:** Reduced image size from ~800MB to ~20MB, improving deployment speed and security (reduced attack surface).
 
-* **Go (1.21+):** For local development of the SyncWorker.
-* **Docker & Docker Compose:** To run the local store environment.
-* **Google Cloud SDK (gcloud):** To interact with GCP.
-* **Terraform:** To manage the Cloud infrastructure.
-* **kubectl:** To manage the GKE cluster.
-* **Tailscale:** For secure cross-site networking.
+## Observability & SRE
+This project is instrumented to monitor the **4 Golden Signals**:
+* **Latency:** Tracking sync duration between Edge and GCP.
+* **Traffic:** Measuring the number of processed retail transactions.
+* **Errors:** Monitoring 5xx rates and failed sync attempts.
+* **Saturation:** Observing CPU/Memory pressure on k3s nodes.
 
-## Infrastructure Setup (Cloud)
+## Quick Start (Automated via Makefile)
 
-The Cloud Backbone is managed via Terraform. It sets up the central registry and the GKE cluster.
+The project uses a `Makefile` to abstract complex workflows. Ensure you have the GCP SDK and Tailscale installed.
 
-### 1. Authentication
-Ensure you are authenticated with Google Cloud:
+## 1. Initialize Infrastructure
 ```bash
-gcloud auth login
-gcloud auth application-default login
+make infra-init
+make infra-up
 ```
-
-2. Deployment
-Navigate to the terraform directory and initialize the environment:
-
-```bash
-cd terraform-backbone
-terraform init
-terraform apply
-```
-3. Connect to Cluster
-Once the apply is finished, configure kubectl to talk to your new cluster:
-
-```bash
-gcloud container clusters get-credentials retail-edge-cluster \
-    --zone europe-west3-b \
-    --project retail-backbone-gcp
-```
-## Architecture & CI/CD
-
-This project implements a modern Cloud-Native workflow for retail edge synchronization.
-
-### System Overview
-- **Core:** Go 1.25 service focusing on high-performance data synchronization.
-- **Infrastructure:** Managed via Terraform (GCP GKE, Artifact Registry, Networking).
-- **Monitoring:** Integrated Prometheus metrics for observing the "4 Golden Signals".
-
-### CI/CD Pipeline
-The deployment process is fully automated using GitHub Actions:
-
-1. **Quality Gate (`go.yml`):** - Runs on every push to `main`.
-   - Executes `go build` and `go vet` to ensure code integrity.
-   
-2. **Deployment (`deploy.yml`):**
-   - **Authentication:** Uses **Workload Identity Federation (OIDC)** to securely connect GitHub with Google Cloud without static service account keys.
-   - **Containerization:** Builds a production-ready Docker image using Multi-stage builds.
-   - **Registry:** Pushes the versioned image to Google Artifact Registry (`europe-west3`).
-
-### Security
-- **Identity-based Access:** No long-lived GCP JSON keys are stored in GitHub Secrets.
-- **Principle of Least Privilege:** The GitHub Service Account is restricted to `artifactregistry.writer` and `container.developer` roles.
-
-### Troubleshooting
-
-#### Permission Error: KUBECONFIG
-If you encounter an error like `Unable to create private file [/etc/rancher/k3s/k3s.yaml]`:
-Your environment is pointing to a restricted system path (common if K3s was previously installed). 
-
-**Fix:**
-```bash
-unset KUBECONFIG
-```
- Re-run the get-credentials command
-
-## License
-
-Distributed under the MIT License. See `LICENSE` for more information.
+**Note on Security:** This repository uses **Gitleaks** in the CI pipeline. All previously exposed test keys have been revoked, rotated, and purged from the git history using `git filter-repo`.
