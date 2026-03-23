@@ -10,6 +10,7 @@ env:
   REGION: europe-west3
   REPOSITORY: retail-edge-repo
   IMAGE: retail-edge-service
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: 'read'
