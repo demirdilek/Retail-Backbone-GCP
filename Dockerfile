@@ -25,7 +25,7 @@ COPY --from=builder /app/bin/retail-syncworker ./retail-syncworker
 COPY --from=builder /app/data ./data
 
 # Falls du keinen 'web' Ordner hast, lösche diese Zeile unbedingt!
-# COPY --from=builder /app/web ./web
+COPY --from=builder /app/web ./web
 
 USER nonroot:nonroot
 EXPOSE 8080
