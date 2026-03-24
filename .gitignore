@@ -77,4 +77,3 @@ store-*.log
 nohup.out
 tailscale_state/
 .vagrant/
-data/inventory.json
