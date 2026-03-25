@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "retailpass"
+        - name: POSTGRES_USER
+          value: "retailuser"
+        - name: POSTGRES_DB
+          value: "retaildb"
+        resources:
+          requests:
+            memory: "256Mi"   # Minimum, damit Postgres sicher startet
+            cpu: "100m"       # 10% eines Kerns reichen für Demo-Queries
+          limits:
+            memory: "512Mi"   # Deckelung, damit die DB nicht die ganze Node frisst
+            cpu: "500m"       # Puffer für schnellere Index-Erstellung

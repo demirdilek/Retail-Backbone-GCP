@@ -9,8 +9,8 @@ env:
   PROJECT_ID: retail-backbone-gcp
   REGION: europe-west3
   REPOSITORY: retail-edge-repo
+  # English comment: The sub-folder/image name in your GAR repo
   IMAGE: retail-edge-service
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: 'read'
@@ -25,33 +25,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Setup for Multi-Platform Builds (AMD64 & ARM64)
+      # English comment: Set up QEMU for ARM64 emulation
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # English comment: OIDC Authentication with fixed Provider and SA names
       - name: Google Auth (OIDC)
+        id: 'auth'
         uses: 'google-github-actions/auth@v2'
         with:
-          workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider-final'
-          service_account: 'github-action-sa@retail-backbone-gcp.iam.gserviceaccount.com'
-          project_id: 'retail-backbone-gcp'
+          # English comment: Using the v2 provider created via Terraform
+          workload_identity_provider: 'projects/962774029483/locations/global/workloadIdentityPools/github-pool/providers/github-provider-v2'
+          service_account: 'github-actions-sa@retail-backbone-gcp.iam.gserviceaccount.com'
           token_format: 'access_token'
 
-      - name: Docker Auth
-        run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      # English comment: Professional Docker Login using the access token from the auth step
+      - name: Docker Login
+        uses: 'docker/login-action@v3'
+        with:
+          registry: '${{ env.REGION }}-docker.pkg.dev'
+          username: 'oauth2accesstoken'
+          password: '${{ steps.auth.outputs.access_token }}'
 
-      - name: Build and Push
-        run: |
-          REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
-          
-          # Build for Cloud (amd64) and Edge-Hardware (arm64)
-          # Use Docker-Caching for faster builds
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --push \
-            -t $REPO_PATH:${{ github.sha }} \
-            -t $REPO_PATH:latest .
+      - name: Build and Push Multi-Arch
+        uses: 'docker/build-push-action@v5'
+        with:
+          context: .
+          push: true
+          # English comment: Building for both Cloud (amd64) and Edge (arm64)
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest
+          # English comment: Enables GitHub Actions cache to speed up subsequent builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

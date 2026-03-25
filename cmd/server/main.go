@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -322,27 +321,37 @@ func main() {
 	}
 
 	connStr := os.Getenv("DB_DSN")
-	if connStr == "" {
-		log.Fatal("DB_DSN environment variable is not set")
-	}
 	var db *sql.DB
 	var err error
-	for i := 0; i < 10; i++ {
-		db, err = database.InitDB(connStr)
-		if err == nil {
-			if err = db.Ping(); err == nil {
-				break
+	isDemoMode := false
+
+	if connStr == "" || connStr == "mock" {
+		logger.Warn("SRE-Alert: DB_DSN not set or 'mock'. Starting in DEMO MODE (In-Memory).")
+		isDemoMode = true
+	} else {
+		// Normal DB connection with retries
+		for i := 0; i < 5; i++ { // 5 times is enough for a startup retry
+			db, err = database.InitDB(connStr)
+			if err == nil {
+				if err = db.Ping(); err == nil {
+					logger.Info("Database connection established successfully")
+					break
+				}
 			}
+			logger.Warn("Database not ready, retrying in 2s...", "attempt", i+1)
+			time.Sleep(2 * time.Second)
 		}
-		logger.Warn("Database not ready, retrying in 2s...", "attempt", i+1)
-		time.Sleep(2 * time.Second)
 	}
 
+	// Wenn nach den Versuchen kein DB-Connect zustande kam
 	if err != nil {
-		logger.Error("Critical: DB connection failed", "err", err)
-		os.Exit(1)
+		logger.Error("DB connection failed, falling back to DEMO MODE", "err", err)
+		isDemoMode = true
 	}
-	defer db.Close()
+
+	if !isDemoMode {
+		defer db.Close()
+	}
 
 	// --- DATABASE INITIALIZATION ---
 

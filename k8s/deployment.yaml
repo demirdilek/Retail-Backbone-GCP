@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-edge-service
+  labels:
+    app: retail-edge
+spec:
+  replicas: 1 # Start with 1 replica for Edge, can be scaled up if needed
+  selector:
+    matchLabels:
+      app: retail-edge
+  template:
+    metadata:
+      labels:
+        app: retail-edge
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', "until nc -zv postgres 5432; do echo waiting for postgres; sleep 2; done;"]
+      containers:
+      - name: api
+        image: europe-west3-docker.pkg.dev/retail-backbone-gcp/retail-edge-repo/retail-edge-service:latest
+        env:
+          - name: DB_DSN
+            value: "postgres://retailuser:retailpass@postgres:5432/retaildb?sslmode=disable"
+        ports:
+        - containerPort: 8080
+        #Define resource boundaries for stability
+        resources:
+          requests:
+            memory: "64Mi"   # Min
+            cpu: "100m"      # 1/10 CPU
+          limits:
+            memory: "128Mi"  # max
+            cpu: "200m"      # 2/10 CPU  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retail-edge-lb
+spec:
+  type: LoadBalancer # This creates a public Google Cloud IP
+  selector:
+    app: retail-edge
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

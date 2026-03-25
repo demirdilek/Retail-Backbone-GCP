@@ -44,9 +44,33 @@ docker-push: ## Push images to Google Artifact Registry
 
 ## --- Infrastructure (GCP) ---
 
+## --- Kubernetes Operations (GKE) ---
+
+# English comments for SRE best practices
+cluster-auth: ## Authenticate kubectl with the GKE cluster
+	gcloud container clusters get-credentials retail-edge-cluster --region europe-west3-b --project retail-backbone-gcp
+
+deploy: cluster-auth ## Deploy all manifests (Postgres first, then App)
+	@echo "SRE Operations: Deploying database layer..."
+	kubectl apply -f k8s/postgres.yaml
+	@echo "SRE Operations: Deploying application layer (with InitContainer)..."
+	kubectl apply -f k8s/deployment.yaml
+
+status: ## Check the health of all pods and services
+	@echo "SRE Operations: Checking system health..."
+	kubectl get pods -o wide
+	kubectl get svc retail-edge-lb
+
+logs: ## Tail the application logs
+	kubectl logs -l app=retail-edge -f --tail=50
+
+destroy: ## Tear down the entire infrastructure (Save costs!)
+	@echo "SRE Operations: WARNING - Destroying all resources..."
+	cd terraform-backbone && terraform destroy -auto-approve
+
 infra-up: ## Deploy GCP Backbone via Terraform
 	@echo "SRE Operations: Provisioning GCP resources..."
-	cd terraform/backbone && terraform init && terraform apply -auto-approve
+	cd terraform-backbone && terraform init && terraform apply -auto-approve
 
 clean: ## Clean up build artifacts
 	rm -rf bin/
